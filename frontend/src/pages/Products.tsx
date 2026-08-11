@@ -12,6 +12,7 @@ interface Product {
   id: number;
   sku: string;
   name: string;
+  activeIngredient: string | null;
   barcode: string | null;
   presentation: string;
   price: string;
@@ -26,7 +27,7 @@ interface Product {
 }
 
 const emptyForm = {
-  sku: '', autoSku: false, name: '', barcode: '', categoryId: '', laboratoryId: '',
+  sku: '', autoSku: false, name: '', activeIngredient: '', barcode: '', categoryId: '', laboratoryId: '',
   unitMeasureId: '', presentation: 'unidad', price: '', costPrice: '', minStock: '0', supplierIds: [] as number[],
 };
 
@@ -75,7 +76,7 @@ export default function Products() {
   const openEdit = (p: Product) => {
     setEditing(p);
     setForm({
-      sku: p.sku, autoSku: false, name: p.name, barcode: p.barcode || '',
+      sku: p.sku, autoSku: false, name: p.name, activeIngredient: p.activeIngredient || '', barcode: p.barcode || '',
       categoryId: p.category ? String(p.category.id) : '', laboratoryId: p.laboratory ? String(p.laboratory.id) : '',
       unitMeasureId: p.unitMeasure ? String(p.unitMeasure.id) : '', presentation: p.presentation,
       price: p.price, costPrice: p.costPrice, minStock: String(p.minStock),
@@ -139,11 +140,12 @@ export default function Products() {
       </div>
       <Alert type="error">{error}</Alert>
       <Card>
-        <Table head={['SKU', 'Nombre', 'Categoria', 'Lab', 'Presentacion', 'Precio', 'Costo', 'Stock total', 'Min', 'Proveedores', 'Acciones']}>
+        <Table head={['SKU', 'Nombre', 'Principio activo', 'Categoria', 'Lab', 'Presentacion', 'Precio', 'Costo', 'Stock total', 'Min', 'Proveedores', 'Acciones']}>
           {products.map((p) => (
             <tr key={p.id}>
               <td><Badge color="blue">{p.sku}</Badge></td>
               <td><b>{p.name}</b></td>
+              <td>{p.activeIngredient || '-'}</td>
               <td>{p.category?.name || '-'}</td>
               <td>{p.laboratory?.name || '-'}</td>
               <td>{p.presentation}</td>
@@ -189,6 +191,7 @@ export default function Products() {
         </div>
         <div className="alert alert-info">El SKU se corrige automaticamente: mayusculas, sin espacios, ceros iniciales eliminados.</div>
         <Field label="Nombre (obligatorio)"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+        <Field label="Principio activo (ej: paracetamol, ibuprofeno)"><Input value={form.activeIngredient} onChange={(e) => setForm({ ...form, activeIngredient: e.target.value })} /></Field>
         <div className="form-row">
           <Field label="Codigo de barras"><Input value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} /></Field>
           <Field label="Presentacion">

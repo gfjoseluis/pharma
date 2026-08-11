@@ -22,6 +22,29 @@ export function generateSku(prefix = 'SKU'): string {
   return `${p}-${rand.slice(0, 8)}`;
 }
 
+/** Toma hasta 3 iniciales de un texto: primera letra de cada palabra con letras; si faltan, completa con las siguientes letras de la primera palabra. */
+export function initials3(text: string): string {
+  const words = (text || '').toUpperCase().split(/[^A-Z0-9]+/).filter((w) => /^[A-Z]/.test(w));
+  if (!words.length) return '000';
+  let s = words.map((w) => w[0]).join('').slice(0, 3);
+  if (s.length < 3) {
+    s += words[0].slice(1).replace(/[^A-Z]/g, '').slice(0, 3 - s.length);
+  }
+  return s.padEnd(3, '0').slice(0, 3);
+}
+
+/** Extrae la dosis: el primer numero del nombre o de la presentacion (ej: "paracetamol 500mg" -> 500). */
+export function dosageFromName(name: string, presentation = ''): string {
+  const m = String(name || '').match(/\d+/);
+  const p = String(presentation || '').match(/\d+/);
+  return m ? m[0] : p ? p[0] : '000';
+}
+
+/** Base del SKU auto: 3 iniciales del nombre - 3 del laboratorio - dosis (ej: PAR-INT-500). */
+export function buildSkuBase(name: string, labName: string, presentation: string): string {
+  return `${initials3(name)}-${initials3(labName)}-${dosageFromName(name, presentation)}`;
+}
+
 /** Valida y devuelve el SKU corregido, o lanza un error descriptivo. */
 export function validateSku(raw: string): { sku: string } {
   const sku = normalizeSku(raw);

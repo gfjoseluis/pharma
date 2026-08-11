@@ -138,7 +138,16 @@ export async function recent(req: Request, res: Response, next: NextFunction): P
         client: { select: { id: true, name: true, ciNit: true } },
         user: { select: { id: true, fullName: true } },
         branch: { select: { id: true, name: true } },
-        items: { include: { product: { select: { id: true, name: true, sku: true } } } },
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true, name: true, sku: true, presentation: true, activeIngredient: true,
+                laboratory: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
         invoice: { select: { id: true, number: true, status: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -160,7 +169,16 @@ export async function list(req: Request, res: Response, next: NextFunction): Pro
         client: { select: { id: true, name: true, ciNit: true } },
         user: { select: { fullName: true } },
         branch: { select: { name: true } },
-        items: { include: { product: { select: { name: true, sku: true } } } },
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true, name: true, sku: true, presentation: true, activeIngredient: true,
+                laboratory: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
         invoice: { select: { id: true, number: true, status: true } },
       },
       orderBy: { createdAt: 'desc' },

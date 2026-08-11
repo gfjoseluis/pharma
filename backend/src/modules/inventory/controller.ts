@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/prisma';
 import { simpleCrud } from './crud';
-import { normalizeSku, isValidSkuFormat, generateSku, validateSku } from '../../utils/sku';
+import { normalizeSku, isValidSkuFormat, generateSku, validateSku, buildSkuBase } from '../../utils/sku';
 import { logAction } from '../../utils/logger';
 
 // ==================== CRUDs simples ====================
@@ -134,46 +134,57 @@ export async function searchProducts(req: Request, res: Response, next: NextFunc
   try {
     const q = String(req.query.q || '').trim();
     const branchId = req.query.branchId ? parseInt(req.query.branchId as string, 10) : undefined;
-    if (q.length < 1) {
-      res.json([]);
-      return;
-    }
     const products = await prisma.product.findMany({
-      where: {
-        active: true,
-        OR: [{ name: { contains: q } }, { sku: { contains: q } }, { barcode: { contains: q } }],
-      },
+      where: q
+        ? {
+            active: true,
+            OR: [
+              { name: { contains: q } },
+              { activeIngredient: { contains: q } },
+              { presentation: { contains: q } },
+              { sku: { contains: q } },
+              { barcode: { contains: q } },
+            ],
+          }
+        : { active: true },
       include: {
         category: { select: { name: true } },
+        laboratory: { select: { id: true, name: true } },
         unitMeasure: { select: { name: true, shortName: true } },
         stocks: {
-          select: { branchId: true, quantity: true, lot: true, expiryDate: true, branch: { select: { name: true } } },
+          select: { branchId: true, quantity: true, lot: true, expiryDate: true, branch: { select: { id: true, name: true } } },
         },
       },
+      orderBy: { name: 'asc' },
       take: 25,
     });
     // Stock en otras sucursales se muestra como consulta, la venta solo usa la propia.
     const result = products.map((p) => {
       const stocks = p.stocks.filter((s) => s.quantity > 0);
       const own = branchId ? stocks.filter((s) => s.branchId === branchId).reduce((a, s) => a + s.quantity, 0) : 0;
-      const other = branchId ? stocks.filter((s) => s.branchId !== branchId).reduce((a, s) => a + s.quantity, 0) : 0;
+      const other = branchId ? stocks.filter((s) => s.branchId !== branchId) : stocks;
+      const otherTotal = other.reduce((a, s) => a + s.quantity, 0);
+      // Sucursales (distintas a la propia) donde hay stock disponible
+      const branchMap = new Map<number, { id: number; name: string; quantity: number }>();
+      for (const s of other) {
+        const existing = branchMap.get(s.branch.id);
+        if (existing) existing.quantity += s.quantity;
+        else branchMap.set(s.branch.id, { id: s.branch.id, name: s.branch.name, quantity: s.quantity });
+      }
       return {
         id: p.id,
         sku: p.sku,
         name: p.name,
+        activeIngredient: p.activeIngredient,
         barcode: p.barcode,
         presentation: p.presentation,
         price: p.price,
         category: p.category?.name || null,
+        lab: p.laboratory ? { id: p.laboratory.id, name: p.laboratory.name } : null,
         unit: p.unitMeasure?.shortName || p.unitMeasure?.name || null,
         stockOwn: own,
-        stockOther: other,
-        lots: stocks.filter((s) => branchId === undefined || s.branchId === branchId).map((s) => ({
-          lot: s.lot,
-          expiryDate: s.expiryDate,
-          quantity: s.quantity,
-          branch: s.branch.name,
-        })),
+        stockOther: otherTotal,
+        branches: Array.from(branchMap.values()),
       };
     });
     res.json(result);
@@ -189,6 +200,23 @@ export async function getProduct(req: Request, res: Response, next: NextFunction
   } catch (err) { next(err); }
 }
 
+/** SKU autogenerado: PAR-INT-500-0001 (3 iniciales nombre - 3 iniciales lab - dosis - secuencial de 4 digitos). */
+async function generateAutoSku(name: string, labName: string, presentation: string): Promise<string> {
+  const base = buildSkuBase(name, labName, presentation);
+  const existing = await prisma.product.findMany({
+    where: { sku: { startsWith: `${base}-` } },
+    select: { sku: true },
+  });
+  let next = existing.length + 1;
+  let candidate = `${base}-${String(next).padStart(4, '0')}`;
+  const used = new Set(existing.map((p) => p.sku));
+  while (used.has(candidate)) {
+    next += 1;
+    candidate = `${base}-${String(next).padStart(4, '0')}`;
+  }
+  return candidate;
+}
+
 export async function createProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const {
@@ -199,7 +227,12 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
 
     let finalSku: string;
     if (autoSku) {
-      finalSku = generateSku();
+      let labName = '';
+      if (laboratoryId) {
+        const lab = await prisma.laboratory.findUnique({ where: { id: parseInt(laboratoryId, 10) } });
+        labName = lab?.name || '';
+      }
+      finalSku = await generateAutoSku(String(name), labName, String(presentation || ''));
     } else {
       const { sku: normalized } = validateSku(sku);
       finalSku = normalized;
@@ -208,7 +241,14 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
     if (dup) {
       res.status(409).json({
         error: `El SKU ${finalSku} ya existe para "${dup.name}". Use otro SKU o active la generacion automatica.`,
-        suggestion: generateSku(),
+        suggestion: await (async () => {
+          let labName = '';
+          if (laboratoryId) {
+            const lab = await prisma.laboratory.findUnique({ where: { id: parseInt(laboratoryId, 10) } });
+            labName = lab?.name || '';
+          }
+          return generateAutoSku(String(name), labName, String(presentation || ''));
+        })(),
       });
       return;
     }

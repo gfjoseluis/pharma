@@ -7,20 +7,24 @@ interface ProductHit {
   id: number;
   sku: string;
   name: string;
+  activeIngredient: string | null;
   barcode: string | null;
   presentation: string;
   price: number;
   category: string | null;
+  lab: { id: number; name: string } | null;
   unit: string | null;
   stockOwn: number;
   stockOther: number;
-  lots: Array<{ lot: string; expiryDate: string | null; quantity: number; branch: string }>;
+  branches: Array<{ id: number; name: string; quantity: number }>;
 }
 
 interface CartItem {
   productId: number;
   name: string;
   sku: string;
+  lab: string | null;
+  presentation: string;
   price: number;
   quantity: number;
   stockOwn: number;
@@ -84,14 +88,23 @@ export default function POS() {
   };
 
   const addToCart = (p: ProductHit) => {
+    if (p.stockOwn < 1) return;
     setCart((prev) => {
       const existing = prev.find((c) => c.productId === p.id);
       if (existing) {
         if (existing.quantity >= p.stockOwn) return prev;
         return prev.map((c) => (c.productId === p.id ? { ...c, quantity: c.quantity + 1 } : c));
       }
-      if (p.stockOwn < 1) return prev;
-      return [...prev, { productId: p.id, name: p.name, sku: p.sku, price: Number(p.price), quantity: 1, stockOwn: p.stockOwn }];
+      return [...prev, {
+        productId: p.id,
+        name: p.name,
+        sku: p.sku,
+        lab: p.lab?.name || null,
+        presentation: p.presentation,
+        price: Number(p.price),
+        quantity: 1,
+        stockOwn: p.stockOwn,
+      }];
     });
     setQ('');
     setHits([]);
@@ -223,12 +236,12 @@ export default function POS() {
       <h2 style={{ marginBottom: 16 }}>Punto de Venta — {user?.branch?.name || 'Sin sucursal'}</h2>
       <Alert type="error">{error}</Alert>
       <div className="pos-layout">
-        <Card title="Buscar producto (se muestra stock de otras sucursales, se vende solo el propio)">
+        <Card title="Buscar producto (nombre comercial, principio activo o presentacion)">
           <div className="pos-search">
             <input
               ref={searchRef}
               className="input"
-              placeholder="Codigo de barras, SKU o nombre..."
+              placeholder="Ej: paracetamol, capsula, jarabe, ibuprofeno..."
               value={q}
               onChange={(e) => doSearch(e.target.value)}
             />
@@ -236,16 +249,41 @@ export default function POS() {
           {hits.length > 0 && (
             <div className="product-results">
               {hits.map((p) => (
-                <div key={p.id} className="product-row" onClick={() => addToCart(p)}>
+                <div key={p.id} className="product-row" onClick={() => p.stockOwn > 0 && addToCart(p)}>
                   <div>
-                    <div className="p-name">{p.name} <span className="p-meta">({p.presentation})</span></div>
-                    <div className="p-meta">SKU {p.sku} · {fmtMoney(p.price)} · stock propio: {p.stockOwn} · otras sucursales: {p.stockOther}</div>
+                    <div className="p-name">
+                      {p.name} <span className="badge badge-gray">{p.presentation}</span>
+                      {p.lab && <span className="badge badge-blue">{p.lab.name}</span>}
+                      {p.unit && <span className="badge badge-gray">{p.unit}</span>}
+                    </div>
+                    <div className="p-meta">
+                      {p.activeIngredient ? `Principio activo: ${p.activeIngredient} · ` : ''}SKU {p.sku} · {fmtMoney(p.price)}
+                      {p.stockOwn > 0 ? ` · stock en su sucursal: ${p.stockOwn}` : ''}
+                    </div>
+                    {p.stockOwn <= 0 && p.branches.length > 0 && (
+                      <div className="p-meta" style={{ marginTop: 4 }}>
+                        Disponible en otras sucursales:
+                        {p.branches.map((b) => (
+                          <span key={b.id} className="badge badge-yellow" style={{ marginLeft: 6 }}>
+                            {b.name}: {b.quantity}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {p.stockOwn <= 0 && p.branches.length === 0 && (
+                      <div className="p-meta" style={{ marginTop: 4 }}><span className="badge badge-red">Sin stock en ninguna sucursal</span></div>
+                    )}
                   </div>
-                  <Button variant="success" onClick={() => addToCart(p)}>+</Button>
+                  {p.stockOwn > 0 ? (
+                    <Button variant="success" onClick={() => addToCart(p)}>+</Button>
+                  ) : (
+                    <span className="badge badge-gray">Sin stock aqui</span>
+                  )}
                 </div>
               ))}
             </div>
           )}
+          {q.length >= 2 && !hits.length && <div className="empty">Sin resultados para "{q}"</div>}
         </Card>
 
         <Card title={`Carrito (${cart.length} items)`}>
@@ -254,7 +292,9 @@ export default function POS() {
             <div key={c.productId} className="product-row">
               <div>
                 <div className="p-name">{c.name}</div>
-                <div className="p-meta">{fmtMoney(c.price)} x {c.quantity} = {fmtMoney(c.price * c.quantity)}</div>
+                <div className="p-meta">
+                  {c.presentation}{c.lab ? ` · ${c.lab}` : ''} · {fmtMoney(c.price)} x {c.quantity} = {fmtMoney(c.price * c.quantity)}
+                </div>
               </div>
               <div className="qty-control">
                 <button onClick={() => changeQty(c.productId, -1)}>−</button>

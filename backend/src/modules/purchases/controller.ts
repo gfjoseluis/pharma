@@ -7,11 +7,15 @@ const PURCHASE_INCLUDE = {
   branch: { select: { id: true, name: true } },
   items: {
     include: {
+      laboratory: { select: { id: true, name: true } },
       product: {
         select: {
           id: true,
           name: true,
           sku: true,
+          activeIngredient: true,
+          presentation: true,
+          laboratory: { select: { id: true, name: true } },
           unitMeasure: { select: { name: true, shortName: true } },
         },
       },
@@ -67,6 +71,7 @@ export async function create(req: Request, res: Response, next: NextFunction): P
       const q = parseInt(it.quantity, 10);
       const c = parseFloat(it.unitCost);
       if (!q || q <= 0 || isNaN(c)) throw new Error('Cantidad o costo invalido en un item');
+      if (!it.expiryDate) throw new Error('La fecha de vencimiento es obligatoria en todos los items');
       return acc + q * c;
     }, 0);
 
@@ -79,13 +84,20 @@ export async function create(req: Request, res: Response, next: NextFunction): P
           date: date ? new Date(date) : new Date(),
           total,
           items: {
-            create: items.map((it: PurchaseItemInput) => ({
-              productId: parseInt(it.productId, 10),
-              quantity: parseInt(it.quantity, 10),
-              unitCost: parseFloat(it.unitCost),
-              lot: it.lot || null,
-              expiryDate: it.expiryDate ? new Date(it.expiryDate) : null,
-            })),
+            create: await Promise.all(
+              items.map(async (it: PurchaseItemInput) => {
+                const product = await tx.product.findUnique({ where: { id: parseInt(it.productId, 10) } });
+                if (!product) throw new Error(`Producto invalido: ${it.productId}`);
+                return {
+                  productId: product.id,
+                  laboratoryId: product.laboratoryId, // snapshot del laboratorio
+                  quantity: parseInt(it.quantity, 10),
+                  unitCost: parseFloat(it.unitCost),
+                  lot: it.lot || null,
+                  expiryDate: it.expiryDate ? new Date(it.expiryDate) : null,
+                };
+              })
+            ),
           },
         },
         include: { items: true },

@@ -49,10 +49,11 @@ model Category {
 }
 
 model Laboratory {
-  id       Int       @id @default(autoincrement())
-  name     String    @unique
-  active   Boolean   @default(true)
-  products Product[]
+  id            Int            @id @default(autoincrement())
+  name          String         @unique
+  active        Boolean        @default(true)
+  products      Product[]
+  purchaseItems PurchaseItem[]
 }
 
 model UnitMeasure {
@@ -76,10 +77,11 @@ model Supplier {
 }
 
 model Product {
-  id            Int               @id @default(autoincrement())
-  sku           String            @unique
-  name          String
-  barcode       String?
+  id               Int               @id @default(autoincrement())
+  sku              String            @unique
+  name             String
+  activeIngredient String? // principio activo: paracetamol, ibuprofeno, etc.
+  barcode          String?
   categoryId    Int?
   category      Category?         @relation(fields: [categoryId], references: [id])
   laboratoryId  Int?
@@ -152,15 +154,17 @@ model Purchase {
 }
 
 model PurchaseItem {
-  id         Int      @id @default(autoincrement())
-  purchaseId Int
-  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  productId  Int
-  product    Product  @relation(fields: [productId], references: [id])
-  quantity   Int
-  unitCost   Decimal  @db.Decimal(10, 2)
-  lot        String?
-  expiryDate DateTime?
+  id            Int        @id @default(autoincrement())
+  purchaseId    Int
+  purchase      Purchase   @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId     Int
+  product       Product    @relation(fields: [productId], references: [id])
+  laboratoryId  Int? // snapshot del laboratorio al momento de la compra
+  laboratory    Laboratory? @relation(fields: [laboratoryId], references: [id])
+  quantity      Int
+  unitCost      Decimal    @db.Decimal(10, 2)
+  lot           String?
+  expiryDate    DateTime?
 }
 
 // ============================= CLIENTES =============================

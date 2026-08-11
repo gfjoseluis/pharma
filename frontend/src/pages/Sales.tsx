@@ -14,7 +14,11 @@ interface SaleRow {
   user: { fullName: string };
   branch: { name: string };
   invoice: { id: number; number: string; status: string } | null;
-  items: Array<{ product: { name: string; sku: string }; quantity: number; price: number }>;
+  items: Array<{
+    product: { id: number; name: string; sku: string; presentation: string; activeIngredient: string | null; laboratory: { id: number; name: string } | null };
+    quantity: number;
+    price: number;
+  }>;
 }
 
 export default function Sales() {
@@ -23,6 +27,7 @@ export default function Sales() {
   const [loading, setLoading] = useState(true);
   const [annulSale, setAnnulSale] = useState<SaleRow | null>(null);
   const [annulReason, setAnnulReason] = useState('');
+  const [detail, setDetail] = useState<SaleRow | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -109,6 +114,7 @@ export default function Sales() {
               <td>{s.user.fullName}</td>
               <td><b>{fmtMoney(s.total)}</b></td>
               <td>
+                <Button variant="secondary" className="btn-sm" onClick={() => setDetail(s)}>Detalle</Button>{' '}
                 {s.status === 'ACTIVE' && (
                   <>
                     <Button variant="secondary" className="btn-sm" onClick={() => { setAnnulSale(s); setAnnulReason(''); }}>Anular</Button>{' '}
@@ -128,6 +134,34 @@ export default function Sales() {
       </>}>
         <p style={{ marginBottom: 10 }}>La venta y su factura (si existe) seran anuladas. El stock se devuelve a la sucursal.</p>
         <Field label="Motivo (opcional)"><Input value={annulReason} onChange={(e) => setAnnulReason(e.target.value)} /></Field>
+      </Modal>
+
+      <Modal title={`Detalle de venta ${detail?.number || ''}`} open={!!detail} onClose={() => setDetail(null)} footer={<Button onClick={() => setDetail(null)}>Cerrar</Button>}>
+        {detail && (
+          <>
+            <div className="grid grid-2">
+              <div className="kpi"><div className="k-label">Cliente</div><div className="k-value" style={{ fontSize: 15 }}>{detail.client ? `${detail.client.name} (${detail.client.ciNit})` : 'MOSTRADOR'}</div></div>
+              <div className="kpi"><div className="k-label">Fecha</div><div className="k-value" style={{ fontSize: 15 }}>{fmtDate(detail.createdAt)}</div></div>
+              <div className="kpi"><div className="k-label">Tipo / Pago</div><div className="k-value" style={{ fontSize: 15 }}>{detail.type} · <Badge color={detail.paymentStatus === 'PAID' ? 'green' : 'yellow'}>{detail.paymentStatus}</Badge></div></div>
+              <div className="kpi"><div className="k-label">Total</div><div className="k-value" style={{ fontSize: 15 }}>{fmtMoney(detail.total)}</div></div>
+            </div>
+            <Table head={['Producto', 'Laboratorio', 'Presentacion', 'Cant.', 'P. unit.', 'Subtotal']}>
+              {detail.items.map((it, i) => (
+                <tr key={i}>
+                  <td>
+                    <b>{it.product.name}</b>
+                    <div className="p-meta">{it.product.activeIngredient ? `P.A.: ${it.product.activeIngredient}` : ''}</div>
+                  </td>
+                  <td><Badge color="blue">{it.product.laboratory?.name || '-'}</Badge></td>
+                  <td>{it.product.presentation}</td>
+                  <td>{it.quantity}</td>
+                  <td>{fmtMoney(it.price)}</td>
+                  <td>{fmtMoney(Number(it.quantity) * Number(it.price))}</td>
+                </tr>
+              ))}
+            </Table>
+          </>
+        )}
       </Modal>
     </div>
   );
