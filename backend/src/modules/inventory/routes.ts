@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authRequired, requirePermission } from '../../middlewares/auth';
+import { authRequired, requirePermission, requireAnyPermission } from '../../middlewares/auth';
 import {
   listCategories, createCategory, updateCategory, deactivateCategory,
   listLaboratories, createLaboratory, updateLaboratory, deactivateLaboratory,
@@ -39,7 +39,8 @@ router.delete('/suppliers/:id', requirePermission('inventory'), deactivateSuppli
 
 // ---- Productos ----
 router.get('/products', requirePermission('inventory'), listProducts);
-router.get('/products/search', requirePermission('inventory'), searchProducts);
+// El buscador lo usa el POS (cajero) y las compras (inventario)
+router.get('/products/search', requireAnyPermission('pos', 'inventory'), searchProducts);
 router.get('/products/:id', requirePermission('inventory'), getProduct);
 router.get('/products/:id/stock', requirePermission('inventory'), productStock);
 router.post('/products', requirePermission('inventory'), createProduct);

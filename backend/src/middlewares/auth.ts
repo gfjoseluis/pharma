@@ -65,6 +65,27 @@ export function requirePermission(module: string) {
   };
 }
 
+/** Exige que el usuario tenga habilitado al menos uno de los modulos indicados. */
+export function requireAnyPermission(...modules: string[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const u = req.user;
+    if (!u) {
+      res.status(401).json({ error: 'No autenticado' });
+      return;
+    }
+    if (u.role === 'admin') {
+      next();
+      return;
+    }
+    const granted = Array.isArray(u.permissions) ? u.permissions : [];
+    if (modules.some((m) => granted.includes(m))) {
+      next();
+      return;
+    }
+    res.status(403).json({ error: `Sin permiso para acceder a: ${modules.join(', ')}` });
+  };
+}
+
 export function requireRoles(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user || !roles.includes(req.user.role)) {

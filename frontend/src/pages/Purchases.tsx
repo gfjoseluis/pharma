@@ -7,7 +7,7 @@ interface Supplier { id: number; name: string; }
 interface ProductHit { id: number; name: string; sku: string; unit: string | null; }
 
 interface ItemRow {
-  productId: number;
+  productId: string;
   quantity: string;
   unitCost: string;
   lot: string;
@@ -48,7 +48,7 @@ export default function Purchases() {
   }, []);
 
   const openNew = () => {
-    setForm({ supplierId: '', branchId: branches[0] ? String(branches[0].id) : '', invoiceNumber: '', date: new Date().toISOString().slice(0, 10), items: [{ productId: 0, quantity: '1', unitCost: '', lot: '', expiryDate: '' }] });
+    setForm({ supplierId: '', branchId: branches[0] ? String(branches[0].id) : '', invoiceNumber: '', date: new Date().toISOString().slice(0, 10), items: [{ productId: '', quantity: '1', unitCost: '', lot: '', expiryDate: '' }] });
     setError('');
     setModal(true);
   };
@@ -61,7 +61,7 @@ export default function Purchases() {
   };
 
   const addItem = () => {
-    setForm((f) => ({ ...f, items: [...f.items, { productId: 0, quantity: '1', unitCost: '', lot: '', expiryDate: '' }] }));
+    setForm((f) => ({ ...f, items: [...f.items, { productId: '', quantity: '1', unitCost: '', lot: '', expiryDate: '' }] }));
   };
 
   const save = async () => {
@@ -73,7 +73,7 @@ export default function Purchases() {
         invoiceNumber: form.invoiceNumber || null,
         date: form.date || undefined,
         items: form.items.map((it) => ({
-          productId: it.productId,
+          productId: parseInt(it.productId, 10),
           quantity: parseInt(it.quantity, 10),
           unitCost: parseFloat(it.unitCost),
           lot: it.lot,

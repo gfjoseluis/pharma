@@ -45,7 +45,7 @@ export async function get(req: Request, res: Response, next: NextFunction): Prom
 }
 
 interface PurchaseItemInput {
-  productId: number;
+  productId: any;
   quantity: any;
   unitCost: any;
   lot?: string;
@@ -80,7 +80,7 @@ export async function create(req: Request, res: Response, next: NextFunction): P
           total,
           items: {
             create: items.map((it: PurchaseItemInput) => ({
-              productId: it.productId,
+              productId: parseInt(it.productId, 10),
               quantity: parseInt(it.quantity, 10),
               unitCost: parseFloat(it.unitCost),
               lot: it.lot || null,
@@ -95,8 +95,7 @@ export async function create(req: Request, res: Response, next: NextFunction): P
         const lot = it.lot || 'S/LOTE';
         const existing = await tx.stock.findUnique({
           where: { branchId_productId_lot: { branchId, productId: it.productId, lot } },
-        });
-        if (existing) {
+        });        if (existing) {
           await tx.stock.update({
             where: { id: existing.id },
             data: {

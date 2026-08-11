@@ -159,10 +159,12 @@ export async function distribute(req: Request, res: Response, next: NextFunction
 
     await prisma.$transaction(async (tx) => {
       for (const it of items) {
-        const { productId, quantity } = it;
+        const productId = parseInt(it.productId, 10);
+        const { quantity } = it;
         const lot = it.lot || 'S/LOTE';
         const qty = parseInt(quantity, 10);
         if (!qty || qty <= 0) throw new Error('Cantidad invalida');
+        if (!productId) throw new Error('Producto invalido');
         const origin = await tx.stock.findUnique({
           where: { branchId_productId_lot: { branchId: originId, productId, lot } },
         });
@@ -211,10 +213,12 @@ export async function transfer(req: Request, res: Response, next: NextFunction):
 
     await prisma.$transaction(async (tx) => {
       for (const it of items) {
-        const { productId, quantity } = it;
+        const productId = parseInt(it.productId, 10);
+        const { quantity } = it;
         const lot = it.lot || 'S/LOTE';
         const qty = parseInt(quantity, 10);
         if (!qty || qty <= 0) throw new Error('Cantidad invalida');
+        if (!productId) throw new Error('Producto invalido');
         const origin = await tx.stock.findUnique({
           where: { branchId_productId_lot: { branchId: fromBranchId, productId, lot } },
         });

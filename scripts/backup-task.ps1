@@ -39,7 +39,7 @@ if ($Install) {
   Write-Log "Instalando tarea programada FarmaciaBackup (diaria 02:00)..."
   $scriptPath = Join-Path $PSScriptRoot "backup-task.ps1"
   $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -ProjectRoot `"$ProjectRoot`""
-  $trigger = New-ScheduledTaskTrigger -Daily -At 02:00
+  $trigger = New-ScheduledTaskTrigger -Daily -At 20:00
   $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries
   Register-ScheduledTask -TaskName "FarmaciaBackup" -Action $action -Trigger $trigger -Settings $settings -Description "Backup diario de la base de datos FarmaciaPOS" -Force | Out-Null
   Write-Log "Tarea FarmaciaBackup instalada. Ejecuta diariamente a las 02:00."
