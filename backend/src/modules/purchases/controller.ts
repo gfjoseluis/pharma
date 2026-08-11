@@ -13,8 +13,9 @@ const PURCHASE_INCLUDE = {
           id: true,
           name: true,
           sku: true,
-          activeIngredient: true,
-          presentation: true,
+          form: { select: { id: true, name: true } },
+          concentration: true,
+          ingredients: { select: { ingredient: true, concentration: true } },
           laboratory: { select: { id: true, name: true } },
           unitMeasure: { select: { name: true, shortName: true } },
         },
@@ -69,8 +70,8 @@ export async function create(req: Request, res: Response, next: NextFunction): P
 
     const total = items.reduce((acc: number, it: PurchaseItemInput) => {
       const q = parseInt(it.quantity, 10);
-      const c = parseFloat(it.unitCost);
-      if (!q || q <= 0 || isNaN(c)) throw new Error('Cantidad o costo invalido en un item');
+      const c = parseFloat(String(it.unitCost).replace(',', '.'));
+      if (!q || q <= 0 || isNaN(c) || c < 0) throw new Error('Cantidad o costo invalido en un item');
       if (!it.expiryDate) throw new Error('La fecha de vencimiento es obligatoria en todos los items');
       return acc + q * c;
     }, 0);
@@ -92,7 +93,7 @@ export async function create(req: Request, res: Response, next: NextFunction): P
                   productId: product.id,
                   laboratoryId: product.laboratoryId, // snapshot del laboratorio
                   quantity: parseInt(it.quantity, 10),
-                  unitCost: parseFloat(it.unitCost),
+                  unitCost: parseFloat(String(it.unitCost).replace(',', '.')),
                   lot: it.lot || null,
                   expiryDate: it.expiryDate ? new Date(it.expiryDate) : null,
                 };
@@ -147,37 +148,19 @@ export async function remove(req: Request, res: Response, next: NextFunction): P
     if (!purchase) { res.status(404).json({ error: 'Compra no encontrada' }); return; }
 
     await prisma.$transaction(async (tx) => {
-      // Revertir stock (solo si no fue descargada al SIN)
-      if (purchase.status !== 'SIN_DESCARGADO') {
-        for (const it of purchase.items) {
-          const lot = it.lot || 'S/LOTE';
-          const stock = await tx.stock.findUnique({
-            where: { branchId_productId_lot: { branchId: purchase.branchId, productId: it.productId, lot } },
-          });
-          if (stock) {
-            await tx.stock.update({ where: { id: stock.id }, data: { quantity: stock.quantity - it.quantity } });
-          }
+      // Revertir stock
+      for (const it of purchase.items) {
+        const lot = it.lot || 'S/LOTE';
+        const stock = await tx.stock.findUnique({
+          where: { branchId_productId_lot: { branchId: purchase.branchId, productId: it.productId, lot } },
+        });
+        if (stock) {
+          await tx.stock.update({ where: { id: stock.id }, data: { quantity: stock.quantity - it.quantity } });
         }
       }
       await tx.purchase.delete({ where: { id } });
     });
     logAction('warn', `Compra eliminada #${id}`, {}, { userId: req.user!.id });
     res.json({ ok: true });
-  } catch (err) { next(err); }
-}
-
-/** Descargo al SIN: las compras con factura se marcan como descargadas (obligacion tributaria). */
-export async function discharge(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const purchase = await prisma.purchase.findUnique({ where: { id } });
-    if (!purchase) { res.status(404).json({ error: 'Compra no encontrada' }); return; }
-    if (!purchase.invoiceNumber) {
-      res.status(400).json({ error: 'La compra debe tener numero de factura para descargarse al SIN' });
-      return;
-    }
-    const updated = await prisma.purchase.update({ where: { id }, data: { status: 'SIN_DESCARGADO' } });
-    logAction('info', `Compra #${id} descargada al SIN`, { invoiceNumber: purchase.invoiceNumber }, { userId: req.user!.id });
-    res.json(updated);
   } catch (err) { next(err); }
 }

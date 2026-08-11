@@ -2,26 +2,10 @@ import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/prisma';
 import { logAction } from '../../utils/logger';
-
-export const PERMISSIONS = [
-  'dashboard',
-  'inventory',
-  'purchases',
-  'branches',
-  'pos',
-  'pos_qr',
-  'invoices',
-  'reports',
-  'clients',
-  'users',
-  'licenses',
-  'backups',
-  'logs',
-] as const;
+import { normalizePermissions } from '../../config/actions';
 
 function parsePermissions(p: unknown): string[] {
-  if (Array.isArray(p)) return p.map(String).filter((x) => (PERMISSIONS as readonly string[]).includes(x));
-  return [];
+  return normalizePermissions(p);
 }
 
 export async function list(_req: Request, res: Response, next: NextFunction): Promise<void> {

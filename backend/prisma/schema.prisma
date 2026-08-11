@@ -20,7 +20,6 @@ model Branch {
   stocks    Stock[]
   purchases Purchase[]
   sales     Sale[]
-  invoices  Invoice[]
   movements StockMovement[]
 }
 
@@ -42,10 +41,19 @@ model User {
 
 // ============================= INVENTARIO =============================
 model Category {
-  id       Int       @id @default(autoincrement())
-  name     String    @unique
-  active   Boolean   @default(true)
-  products Product[]
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  active      Boolean   @default(true)
+  products    Product[]
+}
+
+model Form {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  active      Boolean   @default(true)
+  products    Product[]
 }
 
 model Laboratory {
@@ -77,10 +85,9 @@ model Supplier {
 }
 
 model Product {
-  id               Int               @id @default(autoincrement())
-  sku              String            @unique
+  id               Int                   @id @default(autoincrement())
+  sku              String                @unique
   name             String
-  activeIngredient String? // principio activo: paracetamol, ibuprofeno, etc.
   barcode          String?
   categoryId    Int?
   category      Category?         @relation(fields: [categoryId], references: [id])
@@ -88,17 +95,40 @@ model Product {
   laboratory    Laboratory?       @relation(fields: [laboratoryId], references: [id])
   unitMeasureId Int?
   unitMeasure   UnitMeasure?      @relation(fields: [unitMeasureId], references: [id])
-  presentation  String            @default("unidad") // unidad | frasco | jarabe | caja | blister ...
+  formId        Int?
+  form          Form?             @relation(fields: [formId], references: [id])
+  concentration String? // resumen opcional (ej: "500 mg"); la concentracion por principio activo va en ingredients
+  restrictedUse Boolean           @default(false) // uso restringido (hospitalario, etc.)
   price         Decimal           @default(0) @db.Decimal(10, 2)
   costPrice     Decimal           @default(0) @db.Decimal(10, 2)
   minStock      Int               @default(0)
   active        Boolean           @default(true)
   createdAt     DateTime          @default(now())
   suppliers     ProductSupplier[]
+  ingredients   ProductActiveIngredient[]
+  restrictions  ProductRestriction[]
   stocks        Stock[]
   purchaseItems PurchaseItem[]
   saleItems     SaleItem[]
   movements     StockMovement[]
+}
+
+// Principios activos de un medicamento (puede tener varios: ej. ergotamina + paracetamol + cafeina)
+model ProductActiveIngredient {
+  id           Int     @id @default(autoincrement())
+  productId    Int
+  product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ingredient   String // nombre del principio activo (ej. Paracetamol)
+  concentration String? // concentracion de ese principio (ej. "500 mg", "200 mg/5 ml")
+}
+
+// Restricciones de uso (ej. Hospitalario, Norma PAI)
+model ProductRestriction {
+  id              Int     @id @default(autoincrement())
+  productId       Int
+  product         Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  restrictionType String // Hospitalario | Norma PAI | Venta libre ...
+  notes           String?
 }
 
 model ProductSupplier {
@@ -142,14 +172,13 @@ model StockMovement {
 // ============================= COMPRAS =============================
 model Purchase {
   id            Int            @id @default(autoincrement())
-  invoiceNumber String?
+  invoiceNumber String? // numero de factura del proveedor (referencia)
   supplierId    Int?
   supplier      Supplier?      @relation(fields: [supplierId], references: [id])
   branchId      Int
   branch        Branch         @relation(fields: [branchId], references: [id])
   date          DateTime       @default(now())
   total         Decimal        @default(0) @db.Decimal(10, 2)
-  status        String         @default("RECIBIDA") // RECIBIDA | SIN_DESCARGADO
   items         PurchaseItem[]
 }
 
@@ -177,7 +206,6 @@ model Client {
   email     String?
   createdAt DateTime  @default(now())
   sales     Sale[]
-  invoices  Invoice[]
 }
 
 // ============================= VENTAS =============================
@@ -190,14 +218,14 @@ model Sale {
   user          User       @relation(fields: [userId], references: [id])
   clientId      Int?
   client        Client?    @relation(fields: [clientId], references: [id])
-  type          String     @default("SIMPLE") // SIMPLE | QR | CARD
-  paymentStatus String     @default("PAID") // PENDING | PAID | REJECTED
+  type          String     @default("SIMPLE") // SIMPLE
+  paymentMethod String     @default("EFECTIVO") // EFECTIVO | TARJETA | QR
+  paymentStatus String     @default("PAID") // PAID
   total         Decimal    @db.Decimal(10, 2)
-  status        String     @default("ACTIVE") // ACTIVE | ANNULLED
+  status        String     @default("ACTIVE") // ACTIVE | ANNULLED | DELETED
   note          String?
   createdAt     DateTime   @default(now())
   items         SaleItem[]
-  invoice       Invoice?
 }
 
 model SaleItem {
@@ -211,32 +239,15 @@ model SaleItem {
   subtotal  Decimal @db.Decimal(10, 2)
 }
 
-// ============================= FACTURACION SIN =============================
-model Invoice {
-  id           Int       @id @default(autoincrement())
-  number       String    @unique // numero interno: FAC-000001
-  sinNumber    String?   @unique // numero autorizado por SIN
-  cuf          String?   @unique // Codigo Unico de Facturacion
-  controlCode  String?
-  saleId       Int?      @unique
-  sale         Sale?     @relation(fields: [saleId], references: [id])
-  clientId     Int?
-  client       Client?   @relation(fields: [clientId], references: [id])
-  branchId     Int
-  branch       Branch    @relation(fields: [branchId], references: [id])
-  total        Decimal   @db.Decimal(10, 2)
-  status       String    @default("ISSUED") // ISSUED | ANNULLED | REJECTED
-  xmlUrl       String?
-  pdfUrl       String?
-  issuedAt     DateTime  @default(now())
-  annulledAt   DateTime?
-  reason       String?
-}
+// ============================= FACTURACION =============================
+// El modulo de facturacion electronica (SIN) fue eliminado por requerimiento.
+// Las ventas son simples (efectivo); la referencia de factura del proveedor
+// se guarda en Purchase.invoiceNumber.
 
 // ============================= LICENCIAS =============================
 model License {
   id          String   @id @default(uuid())
-  module      String   @unique // POS | QR | FACTURACION | REPORTES | BACKUPS
+  module      String   @unique // POS | REPORTES | BACKUPS | INVENTARIO
   status      String   @default("INACTIVE") // ACTIVE | INACTIVE
   license_key String?
   activatedAt DateTime?

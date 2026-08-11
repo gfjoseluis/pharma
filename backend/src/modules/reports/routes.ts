@@ -6,9 +6,9 @@ const router = Router();
 
 router.use(authRequired);
 
-router.get('/sales', requirePermission('reports'), salesReport);
-router.get('/inventory', requirePermission('reports'), inventoryReport);
-router.get('/sin', requirePermission('reports'), sinReport);
-router.get('/export', requirePermission('reports'), exportCsv);
+router.get('/sales', requirePermission('reports.view'), salesReport);
+router.get('/inventory', requirePermission('reports.view'), inventoryReport);
+router.get('/sin', requirePermission('reports.view'), sinReport);
+router.get('/export', requirePermission('reports.view'), exportCsv);
 
 export default router;

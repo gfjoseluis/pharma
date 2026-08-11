@@ -11,10 +11,7 @@ import inventoryRoutes from './modules/inventory/routes';
 import purchaseRoutes from './modules/purchases/routes';
 import branchRoutes from './modules/branches/routes';
 import saleRoutes from './modules/sales/routes';
-import paymentRoutes from './modules/payments/routes';
-import invoiceRoutes from './modules/invoices/routes';
 import reportRoutes from './modules/reports/routes';
-import licenseRoutes from './modules/licenses/routes';
 import backupRoutes from './modules/backups/routes';
 import logRoutes from './modules/logs/routes';
 
@@ -33,10 +30,7 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/purchases', purchaseRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/sales', saleRoutes);
-app.use('/api/payments', paymentRoutes);
-app.use('/api/invoices', invoiceRoutes);
 app.use('/api/reports', reportRoutes);
-app.use('/api/licenses', licenseRoutes);
 app.use('/api/backups', backupRoutes);
 app.use('/api/logs', logRoutes);
 

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
+import { hasAction } from '../config/actions';
 
 export interface AuthUser {
   id: number;
@@ -45,8 +46,8 @@ export function authRequired(req: Request, res: Response, next: NextFunction): v
   }
 }
 
-/** Exige que el usuario tenga habilitado el modulo de la funcionalidad. */
-export function requirePermission(module: string) {
+/** Exige que el usuario tenga habilitada la accion (o el modulo heredado equivalente). */
+export function requirePermission(action: string) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const u = req.user;
     if (!u) {
@@ -57,16 +58,16 @@ export function requirePermission(module: string) {
       next();
       return;
     }
-    if (Array.isArray(u.permissions) && u.permissions.includes(module)) {
+    if (hasAction(u.permissions, action)) {
       next();
       return;
     }
-    res.status(403).json({ error: `Sin permiso para acceder a: ${module}` });
+    res.status(403).json({ error: `Sin permiso para acceder a: ${action}` });
   };
 }
 
-/** Exige que el usuario tenga habilitado al menos uno de los modulos indicados. */
-export function requireAnyPermission(...modules: string[]) {
+/** Exige que el usuario tenga habilitada al menos una de las acciones indicadas. */
+export function requireAnyPermission(...actions: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const u = req.user;
     if (!u) {
@@ -77,12 +78,11 @@ export function requireAnyPermission(...modules: string[]) {
       next();
       return;
     }
-    const granted = Array.isArray(u.permissions) ? u.permissions : [];
-    if (modules.some((m) => granted.includes(m))) {
+    if (actions.some((a) => hasAction(u.permissions, a))) {
       next();
       return;
     }
-    res.status(403).json({ error: `Sin permiso para acceder a: ${modules.join(', ')}` });
+    res.status(403).json({ error: `Sin permiso para acceder a: ${actions.join(', ')}` });
   };
 }
 

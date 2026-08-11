@@ -6,7 +6,7 @@ const router = Router();
 
 router.use(authRequired);
 router.use(requireRoles('admin', 'tecnico'));
-router.use(requirePermission('logs'));
+router.use(requirePermission('logs.view'));
 
 router.get('/', listLogs);
 router.get('/:filename', readLog);

@@ -12,8 +12,17 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  app.listen(env.port, () => {
+  const server = app.listen(env.port, () => {
     logger.info(`API de farmacia escuchando en http://localhost:${env.port}`);
+  });
+
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.error(`El puerto ${env.port} ya esta en uso. Ejecute scripts/restart.ps1 (o scripts/start.sh) para detener el proceso anterior.`);
+    } else {
+      logger.error('Error al iniciar el servidor', { error: err.message });
+    }
+    process.exit(1);
   });
 }
 

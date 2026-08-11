@@ -1,11 +1,20 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/prisma';
-import { issueInvoiceForSale, annulInvoice, getNextInternalNumber } from '../invoices/service';
 import { logAction } from '../../utils/logger';
+
+const SALE_PRODUCT_SELECT = {
+  id: true,
+  name: true,
+  sku: true,
+  concentration: true,
+  form: { select: { id: true, name: true } },
+  ingredients: { select: { ingredient: true, concentration: true } },
+  laboratory: { select: { id: true, name: true } },
+} as const;
 
 export async function create(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { type, clientId, items, withInvoice, note } = req.body || {};
+    const { type, clientId, items, note, paymentMethod } = req.body || {};
     const user = req.user!;
     if (!user.branchId) {
       res.status(400).json({ error: 'El usuario no tiene sucursal asignada' });
@@ -16,18 +25,13 @@ export async function create(req: Request, res: Response, next: NextFunction): P
       return;
     }
     const saleType = String(type || 'SIMPLE').toUpperCase();
-    if (!['SIMPLE', 'QR', 'CARD'].includes(saleType)) {
-      res.status(400).json({ error: 'Tipo de venta invalido (SIMPLE | QR | CARD)' });
+    if (saleType !== 'SIMPLE') {
+      res.status(400).json({ error: 'Tipo de venta invalido (SIMPLE)' });
       return;
     }
-    const branch = await prisma.branch.findUnique({ where: { id: user.branchId } });
-    if (!branch) {
-      res.status(400).json({ error: 'Sucursal no encontrada' });
-      return;
-    }
-    // Venta con QR/tarjeta solo en sucursales medianas o grandes
-    if ((saleType === 'QR' || saleType === 'CARD') && branch.type === 'pequena') {
-      res.status(400).json({ error: 'Las ventas con QR/tarjeta solo estan habilitadas en sucursales medianas o grandes' });
+    const method = String(paymentMethod || 'EFECTIVO').toUpperCase();
+    if (!['EFECTIVO', 'TARJETA', 'QR'].includes(method)) {
+      res.status(400).json({ error: 'Metodo de pago invalido (EFECTIVO, TARJETA o QR)' });
       return;
     }
 
@@ -35,16 +39,8 @@ export async function create(req: Request, res: Response, next: NextFunction): P
     if (clientId) {
       client = await prisma.client.findUnique({ where: { id: clientId } });
     }
-    if (!client && (withInvoice || saleType !== 'SIMPLE')) {
-      res.status(400).json({ error: 'Seleccione un cliente (con CI/NIT) o registrelo para facturar' });
-      return;
-    }
-    if (withInvoice && !client) {
-      res.status(400).json({ error: 'Seleccione un cliente para emitir factura' });
-      return;
-    }
 
-    const number = await getNextInternalNumber('SALE');
+    const number = await getNextSaleNumber();
     const sale = await prisma.$transaction(async (tx) => {
       const itemsWithPrices: Array<{ productId: number; quantity: number; price: number; subtotal: number; name: string; sku: string }> = [];
       for (const it of items) {
@@ -90,7 +86,8 @@ export async function create(req: Request, res: Response, next: NextFunction): P
           userId: user.id,
           clientId: client ? client.id : null,
           type: saleType,
-          paymentStatus: saleType === 'SIMPLE' ? 'PAID' : 'PENDING',
+          paymentMethod: method,
+          paymentStatus: 'PAID',
           total,
           note: note || null,
           items: { create: itemsWithPrices.map((i) => ({ productId: i.productId, quantity: i.quantity, price: i.price, subtotal: i.subtotal })) },
@@ -100,27 +97,10 @@ export async function create(req: Request, res: Response, next: NextFunction): P
       return { created, itemsWithPrices };
     });
 
-    let invoice = null;
-    let qrDataUrl: string | null = null;
-    if (saleType === 'QR') {
-      const QRCode = await import('qrcode');
-      const payload = JSON.stringify({
-        m: 'PAGO-QR',
-        s: sale.created.number,
-        t: Number(sale.created.total),
-        b: 'FARMACIA-PAGO',
-        r: `QR-${sale.created.number}`,
-      });
-      qrDataUrl = await QRCode.toDataURL(payload, { width: 220, margin: 1 });
-    }
-    if (sale.created.paymentStatus === 'PAID' && withInvoice && client) {
-      invoice = await issueInvoiceForSale(sale.created.id, client.id);
-    }
-
     logAction('info', `Venta ${sale.created.number} registrada`, {
       total: Number(sale.created.total), type: saleType, client: client ? client.ciNit : 'mostrador',
     }, { module: 'sales', userId: user.id });
-    res.status(201).json({ sale: sale.created, invoice, qrCode: qrDataUrl, paymentPending: sale.created.paymentStatus === 'PENDING' });
+    res.status(201).json({ sale: sale.created, paymentPending: false });
   } catch (err) {
     if (err instanceof Error) {
       res.status(400).json({ error: err.message });
@@ -128,6 +108,18 @@ export async function create(req: Request, res: Response, next: NextFunction): P
     }
     next(err);
   }
+}
+
+async function getNextSaleNumber(): Promise<string> {
+  const last = await prisma.sale.findFirst({ orderBy: { id: 'desc' }, select: { number: true } });
+  let next = 1;
+  if (last && /^V-\d{6}$/.test(last.number)) {
+    next = parseInt(last.number.slice(2), 10) + 1;
+  } else if (last) {
+    const m = last.number.match(/(\d+)$/);
+    if (m) next = parseInt(m[1], 10) + 1;
+  }
+  return `V-${String(next).padStart(6, '0')}`;
 }
 
 export async function recent(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -138,17 +130,7 @@ export async function recent(req: Request, res: Response, next: NextFunction): P
         client: { select: { id: true, name: true, ciNit: true } },
         user: { select: { id: true, fullName: true } },
         branch: { select: { id: true, name: true } },
-        items: {
-          include: {
-            product: {
-              select: {
-                id: true, name: true, sku: true, presentation: true, activeIngredient: true,
-                laboratory: { select: { id: true, name: true } },
-              },
-            },
-          },
-        },
-        invoice: { select: { id: true, number: true, status: true } },
+        items: { include: { product: { select: SALE_PRODUCT_SELECT } } },
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -169,17 +151,7 @@ export async function list(req: Request, res: Response, next: NextFunction): Pro
         client: { select: { id: true, name: true, ciNit: true } },
         user: { select: { fullName: true } },
         branch: { select: { name: true } },
-        items: {
-          include: {
-            product: {
-              select: {
-                id: true, name: true, sku: true, presentation: true, activeIngredient: true,
-                laboratory: { select: { id: true, name: true } },
-              },
-            },
-          },
-        },
-        invoice: { select: { id: true, number: true, status: true } },
+        items: { include: { product: { select: SALE_PRODUCT_SELECT } } },
       },
       orderBy: { createdAt: 'desc' },
       take: 300,
@@ -188,19 +160,15 @@ export async function list(req: Request, res: Response, next: NextFunction): Pro
   } catch (err) { next(err); }
 }
 
-/** Editar venta (solo registros no criticos: sin factura y del dia, no pagadas vía banco). */
+/** Editar venta (solo registros no criticos: sin pago pendiente, del dia). */
 export async function update(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const id = parseInt(req.params.id, 10);
-    const { note, items } = req.body || {};
-    const sale = await prisma.sale.findUnique({ where: { id }, include: { invoice: true } });
+    const { note } = req.body || {};
+    const sale = await prisma.sale.findUnique({ where: { id } });
     if (!sale) { res.status(404).json({ error: 'Venta no encontrada' }); return; }
-    if (sale.invoice) {
-      res.status(400).json({ error: 'No se puede editar una venta facturada; solo anular' });
-      return;
-    }
-    if (sale.type !== 'SIMPLE' && sale.paymentStatus !== 'PENDING') {
-      res.status(400).json({ error: 'Solo se pueden editar ventas en estado pendiente o simples' });
+    if (sale.status !== 'ACTIVE') {
+      res.status(400).json({ error: 'La venta no esta activa' });
       return;
     }
 
@@ -223,11 +191,11 @@ export async function deactivate(req: Request, res: Response, next: NextFunction
   } catch (err) { next(err); }
 }
 
-/** Anular venta (con factura asociada). */
+/** Anular venta: devuelve stock. */
 export async function annul(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const id = parseInt(req.params.id, 10);
-    const sale = await prisma.sale.findUnique({ where: { id }, include: { items: true, invoice: true } });
+    const sale = await prisma.sale.findUnique({ where: { id }, include: { items: true } });
     if (!sale) { res.status(404).json({ error: 'Venta no encontrada' }); return; }
     if (sale.status !== 'ACTIVE') { res.status(400).json({ error: 'La venta ya no esta activa' }); return; }
 
@@ -256,9 +224,6 @@ export async function annul(req: Request, res: Response, next: NextFunction): Pr
         });
       }
       await tx.sale.update({ where: { id }, data: { status: 'ANNULLED' } });
-      if (sale.invoice) {
-        await annulInvoice(sale.invoice.id, 'Venta anulada');
-      }
       return sale;
     });
     logAction('warn', `Venta ${sale.number} anulada`, {}, { module: 'sales', userId: req.user!.id });

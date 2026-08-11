@@ -20,6 +20,11 @@ export const createUnit = simpleCrud('unitMeasure').create;
 export const updateUnit = simpleCrud('unitMeasure').update;
 export const deactivateUnit = simpleCrud('unitMeasure').deactivate;
 
+export const listForms = simpleCrud('form').list;
+export const createForm = simpleCrud('form').create;
+export const updateForm = simpleCrud('form').update;
+export const deactivateForm = simpleCrud('form').deactivate;
+
 // ==================== Proveedores ====================
 export async function listSuppliers(_req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -98,9 +103,12 @@ export async function deactivateSupplier(req: Request, res: Response, next: Next
 
 // ==================== Productos ====================
 const PRODUCT_INCLUDE = {
-  category: { select: { id: true, name: true } },
+  category: { select: { id: true, name: true, description: true } },
   laboratory: { select: { id: true, name: true } },
   unitMeasure: { select: { id: true, name: true, shortName: true } },
+  form: { select: { id: true, name: true } },
+  ingredients: { select: { id: true, ingredient: true, concentration: true } },
+  restrictions: { select: { id: true, restrictionType: true, notes: true } },
   suppliers: { include: { supplier: { select: { id: true, name: true, ruc: true } } } },
   stocks: {
     select: {
@@ -119,7 +127,16 @@ export async function listProducts(req: Request, res: Response, next: NextFuncti
     const onlyActive = req.query.active !== 'false';
     const products = await prisma.product.findMany({
       where: {
-        ...(q ? { OR: [{ name: { contains: q } }, { sku: { contains: q } }, { barcode: { contains: q } }] } : {}),
+        ...(q
+          ? {
+              OR: [
+                { name: { contains: q } },
+                { sku: { contains: q } },
+                { barcode: { contains: q } },
+                { ingredients: { some: { ingredient: { contains: q } } } },
+              ],
+            }
+          : {}),
         ...(onlyActive ? { active: true } : {}),
       },
       include: PRODUCT_INCLUDE,
@@ -140,8 +157,8 @@ export async function searchProducts(req: Request, res: Response, next: NextFunc
             active: true,
             OR: [
               { name: { contains: q } },
-              { activeIngredient: { contains: q } },
-              { presentation: { contains: q } },
+              { ingredients: { some: { ingredient: { contains: q } } } },
+              { form: { name: { contains: q } } },
               { sku: { contains: q } },
               { barcode: { contains: q } },
             ],
@@ -151,6 +168,8 @@ export async function searchProducts(req: Request, res: Response, next: NextFunc
         category: { select: { name: true } },
         laboratory: { select: { id: true, name: true } },
         unitMeasure: { select: { name: true, shortName: true } },
+        form: { select: { id: true, name: true } },
+        ingredients: { select: { ingredient: true, concentration: true } },
         stocks: {
           select: { branchId: true, quantity: true, lot: true, expiryDate: true, branch: { select: { id: true, name: true } } },
         },
@@ -175,9 +194,11 @@ export async function searchProducts(req: Request, res: Response, next: NextFunc
         id: p.id,
         sku: p.sku,
         name: p.name,
-        activeIngredient: p.activeIngredient,
+        ingredients: p.ingredients.map((i) => ({ ingredient: i.ingredient, concentration: i.concentration })),
+        form: p.form ? { id: p.form.id, name: p.form.name } : null,
+        concentration: p.concentration,
+        restrictedUse: p.restrictedUse,
         barcode: p.barcode,
-        presentation: p.presentation,
         price: p.price,
         category: p.category?.name || null,
         lab: p.laboratory ? { id: p.laboratory.id, name: p.laboratory.name } : null,
@@ -201,8 +222,8 @@ export async function getProduct(req: Request, res: Response, next: NextFunction
 }
 
 /** SKU autogenerado: PAR-INT-500-0001 (3 iniciales nombre - 3 iniciales lab - dosis - secuencial de 4 digitos). */
-async function generateAutoSku(name: string, labName: string, presentation: string): Promise<string> {
-  const base = buildSkuBase(name, labName, presentation);
+async function generateAutoSku(name: string, labName: string, concentration: string): Promise<string> {
+  const base = buildSkuBase(name, labName, concentration);
   const existing = await prisma.product.findMany({
     where: { sku: { startsWith: `${base}-` } },
     select: { sku: true },
@@ -217,13 +238,69 @@ async function generateAutoSku(name: string, labName: string, presentation: stri
   return candidate;
 }
 
+type IngredientInput = { ingredient: string; concentration: string | null };
+type RestrictionInput = { restrictionType: string; notes: string | null };
+
+/** Convierte "1,5" o "1.5" a numero; NaN si no es valido. */
+function parseMoney(v: unknown): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') {
+    const n = parseFloat(v.trim().replace(',', '.'));
+    return Number.isFinite(n) && n >= 0 ? n : NaN;
+  }
+  return NaN;
+}
+
+function parseIngredients(raw: unknown): IngredientInput[] {
+  if (!Array.isArray(raw)) return [];
+  const out: IngredientInput[] = [];
+  for (const i of raw) {
+    const ingredient = String(i?.ingredient || '').trim();
+    if (!ingredient) continue;
+    out.push({ ingredient, concentration: String(i?.concentration || '').trim() || null });
+  }
+  return out;
+}
+
+function parseRestrictions(raw: unknown): RestrictionInput[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RestrictionInput[] = [];
+  for (const r of raw) {
+    const restrictionType = String(r?.restrictionType || '').trim();
+    if (!restrictionType) continue;
+    out.push({ restrictionType, notes: String(r?.notes || '').trim() || null });
+  }
+  return out;
+}
+
+/** Resumen de concentracion: primera concentracion declarada (o texto libre). */
+function firstConcentration(ingredients: IngredientInput[], explicit: unknown): string | null {
+  if (explicit !== undefined && explicit !== '' && explicit !== null) return String(explicit).trim();
+  const c = ingredients.find((i) => i.concentration);
+  return c?.concentration || null;
+}
+
 export async function createProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const {
       sku, autoSku, name, barcode, categoryId, laboratoryId, unitMeasureId,
-      presentation, price, costPrice, minStock, supplierIds,
+      formId, concentration, restrictedUse, price, costPrice, minStock, supplierIds,
+      ingredients, restrictions,
     } = req.body || {};
     if (!name) { res.status(400).json({ error: 'name es obligatorio' }); return; }
+
+    const parsedIngredients = parseIngredients(ingredients);
+    const parsedRestrictions = parseRestrictions(restrictions);
+    const priceNum = price !== undefined ? parseMoney(price) : 0;
+    const costNum = costPrice !== undefined ? parseMoney(costPrice) : 0;
+    if (price !== undefined && !Number.isFinite(priceNum)) {
+      res.status(400).json({ error: 'Precio de venta invalido (use punto o coma para decimales, ej: 12.50)' });
+      return;
+    }
+    if (costPrice !== undefined && !Number.isFinite(costNum)) {
+      res.status(400).json({ error: 'Costo invalido (use punto o coma para decimales, ej: 8.75)' });
+      return;
+    }
 
     let finalSku: string;
     if (autoSku) {
@@ -232,7 +309,7 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
         const lab = await prisma.laboratory.findUnique({ where: { id: parseInt(laboratoryId, 10) } });
         labName = lab?.name || '';
       }
-      finalSku = await generateAutoSku(String(name), labName, String(presentation || ''));
+      finalSku = await generateAutoSku(String(name), labName, firstConcentration(parsedIngredients, concentration) || '');
     } else {
       const { sku: normalized } = validateSku(sku);
       finalSku = normalized;
@@ -247,7 +324,7 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
             const lab = await prisma.laboratory.findUnique({ where: { id: parseInt(laboratoryId, 10) } });
             labName = lab?.name || '';
           }
-          return generateAutoSku(String(name), labName, String(presentation || ''));
+          return generateAutoSku(String(name), labName, firstConcentration(parsedIngredients, concentration) || '');
         })(),
       });
       return;
@@ -261,10 +338,18 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
         categoryId: categoryId || null,
         laboratoryId: laboratoryId || null,
         unitMeasureId: unitMeasureId || null,
-        presentation: presentation || 'unidad',
-        price: price !== undefined ? parseFloat(price) : 0,
-        costPrice: costPrice !== undefined ? parseFloat(costPrice) : 0,
+        formId: formId || null,
+        concentration: firstConcentration(parsedIngredients, concentration),
+        restrictedUse: Boolean(restrictedUse),
+        price: priceNum,
+        costPrice: costNum,
         minStock: minStock !== undefined ? parseInt(minStock, 10) : 0,
+        ingredients: parsedIngredients.length
+          ? { create: parsedIngredients.map((i) => ({ ingredient: i.ingredient, concentration: i.concentration })) }
+          : undefined,
+        restrictions: parsedRestrictions.length
+          ? { create: parsedRestrictions.map((r) => ({ restrictionType: r.restrictionType, notes: r.notes })) }
+          : undefined,
         suppliers: Array.isArray(supplierIds) && supplierIds.length
           ? { create: supplierIds.map((sid: number) => ({ supplierId: sid })) }
           : undefined,
@@ -278,7 +363,11 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
 export async function updateProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const id = parseInt(req.params.id, 10);
-    const { sku, name, barcode, categoryId, laboratoryId, unitMeasureId, presentation, price, costPrice, minStock, active, supplierIds } = req.body || {};
+    const {
+      sku, name, barcode, categoryId, laboratoryId, unitMeasureId,
+      formId, concentration, restrictedUse, price, costPrice, minStock, active, supplierIds,
+      ingredients, restrictions,
+    } = req.body || {};
     const existing = await prisma.product.findUnique({ where: { id } });
     if (!existing) { res.status(404).json({ error: 'Producto no encontrado' }); return; }
 
@@ -293,6 +382,19 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
       finalSku = normalized;
     }
 
+    const parsedIngredients = Array.isArray(ingredients) ? parseIngredients(ingredients) : null;
+    const parsedRestrictions = Array.isArray(restrictions) ? parseRestrictions(restrictions) : null;
+    const priceNum = price !== undefined ? parseMoney(price) : undefined;
+    const costNum = costPrice !== undefined ? parseMoney(costPrice) : undefined;
+    if (price !== undefined && priceNum === undefined) {
+      res.status(400).json({ error: 'Precio de venta invalido (use punto o coma para decimales, ej: 12.50)' });
+      return;
+    }
+    if (costPrice !== undefined && costNum === undefined) {
+      res.status(400).json({ error: 'Costo invalido (use punto o coma para decimales, ej: 8.75)' });
+      return;
+    }
+
     await prisma.$transaction(async (tx) => {
       await tx.product.update({
         where: { id },
@@ -303,13 +405,31 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
           categoryId: categoryId !== undefined ? categoryId || null : undefined,
           laboratoryId: laboratoryId !== undefined ? laboratoryId || null : undefined,
           unitMeasureId: unitMeasureId !== undefined ? unitMeasureId || null : undefined,
-          presentation: presentation !== undefined ? presentation : undefined,
-          price: price !== undefined ? parseFloat(price) : undefined,
-          costPrice: costPrice !== undefined ? parseFloat(costPrice) : undefined,
+          formId: formId !== undefined ? formId || null : undefined,
+          concentration: concentration !== undefined ? String(concentration).trim() || null : undefined,
+          restrictedUse: restrictedUse !== undefined ? Boolean(restrictedUse) : undefined,
+          price: priceNum,
+          costPrice: costNum,
           minStock: minStock !== undefined ? parseInt(minStock, 10) : undefined,
           active: active !== undefined ? Boolean(active) : undefined,
         },
       });
+      if (parsedIngredients) {
+        await tx.productActiveIngredient.deleteMany({ where: { productId: id } });
+        if (parsedIngredients.length) {
+          await tx.productActiveIngredient.createMany({
+            data: parsedIngredients.map((i) => ({ productId: id, ingredient: i.ingredient, concentration: i.concentration })),
+          });
+        }
+      }
+      if (parsedRestrictions) {
+        await tx.productRestriction.deleteMany({ where: { productId: id } });
+        if (parsedRestrictions.length) {
+          await tx.productRestriction.createMany({
+            data: parsedRestrictions.map((r) => ({ productId: id, restrictionType: r.restrictionType, notes: r.notes })),
+          });
+        }
+      }
       if (Array.isArray(supplierIds)) {
         await tx.productSupplier.deleteMany({ where: { productId: id } });
         if (supplierIds.length) {
@@ -343,6 +463,35 @@ export async function productStock(req: Request, res: Response, next: NextFuncti
       orderBy: { expiryDate: 'asc' },
     });
     res.json(stocks);
+  } catch (err) { next(err); }
+}
+
+/** Lotes con stock y vencimiento dentro de los proximos N dias (o ya vencidos). */
+export async function expiringStock(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const days = Math.max(0, parseInt(String(req.query.days || '30'), 10) || 30);
+    const until = new Date(Date.now() + days * 86400000);
+    const now = new Date();
+    const stocks = await prisma.stock.findMany({
+      where: { quantity: { gt: 0 }, expiryDate: { lte: until } },
+      include: {
+        product: { select: { id: true, name: true, sku: true } },
+        branch: { select: { id: true, name: true } },
+      },
+      orderBy: { expiryDate: 'asc' },
+      take: 100,
+    });
+    res.json(
+      stocks.map((s) => ({
+        id: s.id,
+        lot: s.lot,
+        quantity: s.quantity,
+        expiryDate: s.expiryDate,
+        expired: s.expiryDate ? s.expiryDate < now : false,
+        product: s.product,
+        branch: s.branch,
+      }))
+    );
   } catch (err) { next(err); }
 }
 

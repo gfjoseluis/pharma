@@ -1,17 +1,14 @@
 import { Router } from 'express';
 import { authRequired, requirePermission } from '../../middlewares/auth';
-import { CheckModule } from '../../middlewares/checkModule';
-import { list, create, get, remove, discharge } from './controller';
+import { list, create, get, remove } from './controller';
 
 const router = Router();
 
 router.use(authRequired);
 
-router.get('/', requirePermission('purchases'), list);
-router.get('/:id', requirePermission('purchases'), get);
-router.post('/', requirePermission('purchases'), CheckModule('INVENTARIO'), create);
-router.delete('/:id', requirePermission('purchases'), remove);
-// Descargo al SIN: marca la compra con factura como descargada
-router.post('/:id/descargo', requirePermission('purchases'), CheckModule('INVENTARIO'), discharge);
+router.get('/', requirePermission('purchases.view'), list);
+router.get('/:id', requirePermission('purchases.view'), get);
+router.post('/', requirePermission('purchases.create'), create);
+router.delete('/:id', requirePermission('purchases.delete'), remove);
 
 export default router;

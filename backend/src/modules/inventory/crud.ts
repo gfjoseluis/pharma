@@ -2,13 +2,14 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/prisma';
 import { logAction } from '../../utils/logger';
 
-type ModelName = 'category' | 'laboratory' | 'unitMeasure';
+type ModelName = 'category' | 'laboratory' | 'unitMeasure' | 'form';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const modelMap: Record<ModelName, any> = {
   category: prisma.category,
   laboratory: prisma.laboratory,
   unitMeasure: prisma.unitMeasure,
+  form: prisma.form,
 };
 
 export function simpleCrud(modelName: ModelName) {
@@ -23,10 +24,14 @@ export function simpleCrud(modelName: ModelName) {
     },
     create: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
-        const { name, shortName } = req.body || {};
+        const { name, shortName, description } = req.body || {};
         if (!name) { res.status(400).json({ error: 'name es obligatorio' }); return; }
         const row = await model.create({
-          data: shortName !== undefined ? { name: String(name).trim(), shortName: String(shortName).trim() } : { name: String(name).trim() },
+          data: {
+            name: String(name).trim(),
+            ...(shortName !== undefined ? { shortName: String(shortName).trim() } : {}),
+            ...(description !== undefined ? { description: String(description).trim() || null } : {}),
+          },
         });
         logAction('info', `${label} creado: ${row.name}`, {}, { userId: req.user!.id });
         res.status(201).json(row);
@@ -41,10 +46,11 @@ export function simpleCrud(modelName: ModelName) {
     update: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
         const id = parseInt(req.params.id, 10);
-        const { name, shortName, active } = req.body || {};
+        const { name, shortName, description, active } = req.body || {};
         const data: Record<string, unknown> = {};
         if (name !== undefined) data.name = String(name).trim();
         if (shortName !== undefined) data.shortName = String(shortName).trim();
+        if (description !== undefined) data.description = String(description).trim() || null;
         if (active !== undefined) data.active = Boolean(active);
         const row = await model.update({ where: { id }, data });
         res.json(row);

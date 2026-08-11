@@ -24,7 +24,7 @@ export async function create(req: Request, res: Response, next: NextFunction): P
   try {
     const { name, ciNit, address, phone, email } = req.body || {};
     if (!name || !ciNit) {
-      res.status(400).json({ error: 'name y ciNit son obligatorios para solicitar factura' });
+      res.status(400).json({ error: 'name y ciNit son obligatorios' });
       return;
     }
     const ci = String(ciNit).trim().toUpperCase();

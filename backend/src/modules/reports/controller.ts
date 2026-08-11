@@ -106,11 +106,11 @@ export async function inventoryReport(req: Request, res: Response, next: NextFun
     const stocks = await prisma.stock.findMany({
       where: { quantity: { gt: 0 } },
       include: {
-        product: { select: { id: true, name: true, sku: true, minStock: true, presentation: true, unitMeasure: { select: { shortName: true } } } },
+        product: { select: { id: true, name: true, sku: true, minStock: true, form: { select: { name: true } }, unitMeasure: { select: { shortName: true } } } },
         branch: { select: { id: true, name: true } },
       },
     });
-    const stockMap = new Map<number, { product: { id: number; name: string; sku: string; minStock: number; presentation: string; unit: string | null }; total: number; branches: string[] }>();
+    const stockMap = new Map<number, { product: { id: number; name: string; sku: string; minStock: number; form: string | null; unit: string | null }; total: number; branches: string[] }>();
     for (const s of stocks) {
       const key = s.productId;
       const entry = stockMap.get(key) || {
@@ -119,7 +119,7 @@ export async function inventoryReport(req: Request, res: Response, next: NextFun
           name: s.product.name,
           sku: s.product.sku,
           minStock: s.product.minStock,
-          presentation: s.product.presentation,
+          form: s.product.form?.name || null,
           unit: s.product.unitMeasure?.shortName || null,
         },
         total: 0,
@@ -159,24 +159,13 @@ export async function inventoryReport(req: Request, res: Response, next: NextFun
   } catch (err) { next(err); }
 }
 
-export async function sinReport(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function sinReport(_req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const year = parseInt(String(req.query.year || new Date().getFullYear()), 10);
-    const month = parseInt(String(req.query.month || new Date().getMonth() + 1), 10);
-    const from = new Date(year, month - 1, 1);
-    const to = new Date(year, month, 1);
-    const invoices = await prisma.invoice.findMany({
-      where: { issuedAt: { gte: from, lt: to } },
-      select: { status: true, total: true },
-    });
-    const byStatus = (s: string) => invoices.filter((i) => i.status === s);
+    // El modulo de facturacion electronica (SIN) fue eliminado por requerimiento.
     res.json({
-      period: `${year}-${String(month).padStart(2, '0')}`,
-      emitted: byStatus('ISSUED').length,
-      annulled: byStatus('ANNULLED').length,
-      rejected: byStatus('REJECTED').length,
-      totalEmitted: byStatus('ISSUED').reduce((a, i) => a + Number(i.total), 0),
-      totalAnnulled: byStatus('ANNULLED').reduce((a, i) => a + Number(i.total), 0),
+      module: 'SIN',
+      enabled: false,
+      note: 'Modulo de facturacion electronica eliminado del sistema',
     });
   } catch (err) { next(err); }
 }

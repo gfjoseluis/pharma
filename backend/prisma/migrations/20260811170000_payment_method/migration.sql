@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE `sale` ADD COLUMN `paymentMethod` VARCHAR(191) NOT NULL DEFAULT 'EFECTIVO';
+
