@@ -1,0 +1,252 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================= SUCURSALES =============================
+model Branch {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  address   String?
+  phone     String?
+  type      String    @default("pequena") // pequena | mediana | grande
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  users     User[]
+  stocks    Stock[]
+  purchases Purchase[]
+  sales     Sale[]
+  invoices  Invoice[]
+  movements StockMovement[]
+}
+
+// ============================= USUARIOS =============================
+model User {
+  id          Int      @id @default(autoincrement())
+  username    String   @unique
+  password    String
+  fullName    String
+  role        String   @default("cajero") // admin | cajero | tecnico
+  branchId    Int?
+  branch      Branch?  @relation(fields: [branchId], references: [id])
+  permissions Json     @default("[]") // lista de modulos habilitados
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  sales       Sale[]
+  movements   StockMovement[]
+}
+
+// ============================= INVENTARIO =============================
+model Category {
+  id       Int       @id @default(autoincrement())
+  name     String    @unique
+  active   Boolean   @default(true)
+  products Product[]
+}
+
+model Laboratory {
+  id       Int       @id @default(autoincrement())
+  name     String    @unique
+  active   Boolean   @default(true)
+  products Product[]
+}
+
+model UnitMeasure {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  shortName String?
+  active    Boolean  @default(true)
+  products  Product[]
+}
+
+model Supplier {
+  id       Int               @id @default(autoincrement())
+  name     String
+  ruc      String?           @unique
+  phone    String?
+  email    String?
+  address  String?
+  active   Boolean           @default(true)
+  products ProductSupplier[]
+  purchases Purchase[]
+}
+
+model Product {
+  id            Int               @id @default(autoincrement())
+  sku           String            @unique
+  name          String
+  barcode       String?
+  categoryId    Int?
+  category      Category?         @relation(fields: [categoryId], references: [id])
+  laboratoryId  Int?
+  laboratory    Laboratory?       @relation(fields: [laboratoryId], references: [id])
+  unitMeasureId Int?
+  unitMeasure   UnitMeasure?      @relation(fields: [unitMeasureId], references: [id])
+  presentation  String            @default("unidad") // unidad | frasco | jarabe | caja | blister ...
+  price         Decimal           @default(0) @db.Decimal(10, 2)
+  costPrice     Decimal           @default(0) @db.Decimal(10, 2)
+  minStock      Int               @default(0)
+  active        Boolean           @default(true)
+  createdAt     DateTime          @default(now())
+  suppliers     ProductSupplier[]
+  stocks        Stock[]
+  purchaseItems PurchaseItem[]
+  saleItems     SaleItem[]
+  movements     StockMovement[]
+}
+
+model ProductSupplier {
+  productId  Int
+  supplierId Int
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@id([productId, supplierId])
+}
+
+model Stock {
+  id         Int      @id @default(autoincrement())
+  branchId   Int
+  branch     Branch   @relation(fields: [branchId], references: [id])
+  productId  Int
+  product    Product  @relation(fields: [productId], references: [id])
+  lot        String?
+  expiryDate DateTime?
+  quantity   Int      @default(0)
+
+  @@unique([branchId, productId, lot])
+}
+
+model StockMovement {
+  id             Int      @id @default(autoincrement())
+  type           String // PURCHASE | DISTRIBUTION | TRANSFER_OUT | TRANSFER_IN | SALE | SIN_DISCHARGE | ADJUSTMENT
+  productId      Int
+  product        Product  @relation(fields: [productId], references: [id])
+  branchId       Int
+  branch         Branch   @relation(fields: [branchId], references: [id])
+  targetBranchId Int?
+  quantity       Int
+  lot            String?
+  userId         Int?
+  user           User?    @relation(fields: [userId], references: [id])
+  note           String?
+  createdAt      DateTime @default(now())
+}
+
+// ============================= COMPRAS =============================
+model Purchase {
+  id            Int            @id @default(autoincrement())
+  invoiceNumber String?
+  supplierId    Int?
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id])
+  branchId      Int
+  branch        Branch         @relation(fields: [branchId], references: [id])
+  date          DateTime       @default(now())
+  total         Decimal        @default(0) @db.Decimal(10, 2)
+  status        String         @default("RECIBIDA") // RECIBIDA | SIN_DESCARGADO
+  items         PurchaseItem[]
+}
+
+model PurchaseItem {
+  id         Int      @id @default(autoincrement())
+  purchaseId Int
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId  Int
+  product    Product  @relation(fields: [productId], references: [id])
+  quantity   Int
+  unitCost   Decimal  @db.Decimal(10, 2)
+  lot        String?
+  expiryDate DateTime?
+}
+
+// ============================= CLIENTES =============================
+model Client {
+  id        Int       @id @default(autoincrement())
+  name      String
+  ciNit     String    @unique
+  address   String?
+  phone     String?
+  email     String?
+  createdAt DateTime  @default(now())
+  sales     Sale[]
+  invoices  Invoice[]
+}
+
+// ============================= VENTAS =============================
+model Sale {
+  id            Int        @id @default(autoincrement())
+  number        String     @unique
+  branchId      Int
+  branch        Branch     @relation(fields: [branchId], references: [id])
+  userId        Int
+  user          User       @relation(fields: [userId], references: [id])
+  clientId      Int?
+  client        Client?    @relation(fields: [clientId], references: [id])
+  type          String     @default("SIMPLE") // SIMPLE | QR | CARD
+  paymentStatus String     @default("PAID") // PENDING | PAID | REJECTED
+  total         Decimal    @db.Decimal(10, 2)
+  status        String     @default("ACTIVE") // ACTIVE | ANNULLED
+  note          String?
+  createdAt     DateTime   @default(now())
+  items         SaleItem[]
+  invoice       Invoice?
+}
+
+model SaleItem {
+  id        Int     @id @default(autoincrement())
+  saleId    Int
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Decimal @db.Decimal(10, 2)
+  subtotal  Decimal @db.Decimal(10, 2)
+}
+
+// ============================= FACTURACION SIN =============================
+model Invoice {
+  id           Int       @id @default(autoincrement())
+  number       String    @unique // numero interno: FAC-000001
+  sinNumber    String?   @unique // numero autorizado por SIN
+  cuf          String?   @unique // Codigo Unico de Facturacion
+  controlCode  String?
+  saleId       Int?      @unique
+  sale         Sale?     @relation(fields: [saleId], references: [id])
+  clientId     Int?
+  client       Client?   @relation(fields: [clientId], references: [id])
+  branchId     Int
+  branch       Branch    @relation(fields: [branchId], references: [id])
+  total        Decimal   @db.Decimal(10, 2)
+  status       String    @default("ISSUED") // ISSUED | ANNULLED | REJECTED
+  xmlUrl       String?
+  pdfUrl       String?
+  issuedAt     DateTime  @default(now())
+  annulledAt   DateTime?
+  reason       String?
+}
+
+// ============================= LICENCIAS =============================
+model License {
+  id          String   @id @default(uuid())
+  module      String   @unique // POS | QR | FACTURACION | REPORTES | BACKUPS
+  status      String   @default("INACTIVE") // ACTIVE | INACTIVE
+  license_key String?
+  activatedAt DateTime?
+  createdAt   DateTime @default(now())
+}
+
+// ============================= BACKUPS =============================
+model Backup {
+  id        Int      @id @default(autoincrement())
+  type      String // LOCAL | DRIVE
+  status    String   @default("RUNNING") // RUNNING | SUCCESS | FAILED
+  filename  String?
+  path      String?
+  sizeBytes BigInt?
+  error     String?
+  createdAt DateTime @default(now())
+}
