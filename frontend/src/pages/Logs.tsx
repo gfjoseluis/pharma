@@ -49,7 +49,7 @@ export default function Logs() {
         </Card>
         <Card title={selected ? `Contenido: ${selected.filename}` : 'Seleccione un archivo'} actions={selected && <Button variant="secondary" onClick={() => setSelected(null)}>Cerrar</Button>}>
           {selected && (
-            <pre style={{ background: '#0f172a', color: '#a5f3fc', padding: 14, borderRadius: 8, maxHeight: 480, overflow: 'auto', fontSize: 12 }}>
+            <pre style={{ background: '#0f172a', color: '#a5f3fc', padding: 14, borderRadius: 8, maxHeight: 480, overflow: 'auto', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxWidth: '100%' }}>
               {content.slice().reverse().join('\n')}
             </pre>
           )}

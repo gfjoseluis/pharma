@@ -1,29 +1,38 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import ExpiryBell from './ExpiryBell';
 
 const NAV = [
-  { to: '/', label: 'Dashboard', icon: '📊', perm: 'dashboard' },
-  { to: '/pos', label: 'Punto de Venta', icon: '🛒', perm: 'pos' },
-  { to: '/sales', label: 'Ventas y Facturacion', icon: '🧾', perm: 'pos' },
-  { to: '/clients', label: 'Clientes', icon: '👤', perm: 'clients' },
-  { to: '/products', label: 'Productos', icon: '💊', perm: 'inventory' },
-  { to: '/suppliers', label: 'Proveedores', icon: '🚚', perm: 'inventory' },
-  { to: '/purchases', label: 'Compras', icon: '📦', perm: 'purchases' },
-  { to: '/branches', label: 'Sucursales / Stock', icon: '🏬', perm: 'branches' },
-  { to: '/categories', label: 'Categorias', icon: '🗂️', perm: 'inventory' },
-  { to: '/labs', label: 'Laboratorios', icon: '🔬', perm: 'inventory' },
-  { to: '/units', label: 'Unidades de Medida', icon: '⚖️', perm: 'inventory' },
-  { to: '/reports', label: 'Reportes', icon: '📈', perm: 'reports' },
-  { to: '/users', label: 'Usuarios', icon: '👥', perm: 'users' },
-  { to: '/licenses', label: 'Licencias', icon: '🔑', perm: 'licenses' },
-  { to: '/backups', label: 'Backups', icon: '💾', perm: 'backups' },
-  { to: '/logs', label: 'Logs', icon: '📜', perm: 'logs' },
+  { to: '/', label: 'Dashboard', icon: '📊', perm: 'dashboard.view' },
+  { to: '/pos', label: 'Punto de Venta', icon: '🛒', perm: 'pos.view' },
+  { to: '/sales', label: 'Ventas', icon: '🧾', perm: 'sales.view' },
+  { to: '/clients', label: 'Clientes', icon: '👤', perm: 'clients.view' },
+  { to: '/products', label: 'Productos', icon: '💊', perm: 'products.view' },
+  { to: '/suppliers', label: 'Proveedores', icon: '🚚', perm: 'inventory.refs.view' },
+  { to: '/purchases', label: 'Compras', icon: '📦', perm: 'purchases.view' },
+  { to: '/branches', label: 'Sucursales / Stock', icon: '🏬', perm: 'branches.view' },
+  { to: '/categories', label: 'Categorias', icon: '🗂️', perm: 'inventory.refs.view' },
+  { to: '/labs', label: 'Laboratorios', icon: '🔬', perm: 'inventory.refs.view' },
+  { to: '/units', label: 'Unidades de Medida', icon: '⚖️', perm: 'inventory.refs.view' },
+  { to: '/forms', label: 'Formas farmaceuticas', icon: '💧', perm: 'forms.manage' },
+  { to: '/reports', label: 'Reportes', icon: '📈', perm: 'reports.view' },
+  { to: '/users', label: 'Usuarios', icon: '👥', perm: 'users.view' },
+  { to: '/backups', label: 'Backups', icon: '💾', perm: 'backups.view' },
+  { to: '/logs', label: 'Logs', icon: '📜', perm: 'logs.view' },
 ];
 
 export default function Layout() {
   const { user, logout, hasPerm } = useAuth();
   const navigate = useNavigate();
+
+  // Modo compacto por pantalla fisica (no por viewport): el zoom del navegador
+  // agranda el viewport CSS y desactiva las media queries, asi que se decide
+  // con window.screen, que el zoom no modifica.
+  useEffect(() => {
+    const small = window.screen.availWidth <= 1500 || window.screen.availHeight <= 820;
+    document.documentElement.classList.toggle('app-compact', small);
+  }, []);
 
   const items = NAV.filter((n) => hasPerm(n.perm));
 
@@ -40,6 +49,7 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
+        <ExpiryBell />
         <div className="sidebar-foot">
           <div className="user-chip">
             <div className="uc-name">{user?.fullName}</div>

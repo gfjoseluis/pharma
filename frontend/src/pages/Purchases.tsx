@@ -3,6 +3,7 @@ import { api, errMsg } from '../api/client';
 import { Card, Table, Button, Modal, Field, Input, Spinner, Alert, fmtMoney, fmtDate, Badge } from '../components/ui';
 import ProductPicker, { PickedProduct } from '../components/ProductPicker';
 import SelectSearch from '../components/SelectSearch';
+import { isValidMoney, moneyToNumber } from '../money';
 
 interface Branch { id: number; name: string; }
 interface Supplier { id: number; name: string; ruc: string | null; }
@@ -26,8 +27,9 @@ interface PurchaseItem {
     id: number;
     name: string;
     sku: string;
-    activeIngredient: string | null;
-    presentation: string;
+    form: { id: number; name: string } | null;
+    concentration: string | null;
+    ingredients: Array<{ ingredient: string; concentration: string | null }>;
     laboratory: { id: number; name: string } | null;
     unitMeasure: { name: string; shortName: string | null } | null;
   };
@@ -38,7 +40,6 @@ interface Purchase {
   invoiceNumber: string | null;
   date: string;
   total: string;
-  status: string;
   supplier: Supplier | null;
   branch: Branch;
   items: PurchaseItem[];
@@ -91,9 +92,9 @@ export default function Purchases() {
 
   const save = async () => {
     setError('');
-    const bad = form.items.find((it) => !it.product || !it.quantity || !it.unitCost || !it.expiryDate);
+    const bad = form.items.find((it) => !it.product || !it.quantity || !isValidMoney(it.unitCost) || !it.expiryDate);
     if (bad) {
-      setError('Complete todos los items: producto, cantidad, precio unitario y fecha de vencimiento (obligatoria).');
+      setError('Complete todos los items: producto, cantidad, precio unitario (punto o coma decimal) y fecha de vencimiento (obligatoria).');
       return;
     }
     try {
@@ -105,7 +106,7 @@ export default function Purchases() {
         items: form.items.map((it) => ({
           productId: it.product?.id,
           quantity: parseInt(it.quantity, 10),
-          unitCost: parseFloat(it.unitCost),
+          unitCost: moneyToNumber(it.unitCost),
           lot: it.lot,
           expiryDate: it.expiryDate || undefined,
         })),
@@ -113,11 +114,6 @@ export default function Purchases() {
       setModal(false);
       load();
     } catch (e) { setError(errMsg(e)); }
-  };
-
-  const discharge = async (p: Purchase) => {
-    try { await api.post(`/purchases/${p.id}/descargo`); load(); }
-    catch (e) { setError(errMsg(e)); }
   };
 
   const remove = async (p: Purchase) => {
@@ -128,8 +124,8 @@ export default function Purchases() {
 
   if (loading && !rows.length) return <Spinner />;
 
-  const subtotal = form.items.reduce((a, it) => a + (parseInt(it.quantity, 10) || 0) * (parseFloat(it.unitCost) || 0), 0);
-  const itemsValid = form.items.length > 0 && form.items.every((it) => it.product && it.quantity && it.unitCost && it.expiryDate);
+  const subtotal = form.items.reduce((a, it) => a + (parseInt(it.quantity, 10) || 0) * moneyToNumber(it.unitCost), 0);
+  const itemsValid = form.items.length > 0 && form.items.every((it) => it.product && it.quantity && isValidMoney(it.unitCost) && it.expiryDate);
 
   return (
     <div>
@@ -139,7 +135,7 @@ export default function Purchases() {
       </div>
       <Alert type="error">{error}</Alert>
       <Card>
-        <Table head={['#', 'Fecha', 'Proveedor', 'Factura', 'Sucursal destino', 'Items', 'Total', 'Estado', 'Acciones']}>
+        <Table head={['#', 'Fecha', 'Proveedor', 'Factura', 'Sucursal destino', 'Items', 'Total', 'Acciones']}>
           {rows.map((p) => (
             <tr key={p.id}>
               <td>#{p.id}</td>
@@ -150,15 +146,7 @@ export default function Purchases() {
               <td>{p.items.length}</td>
               <td><b>{fmtMoney(p.total)}</b></td>
               <td>
-                <Badge color={p.status === 'RECIBIDA' ? 'blue' : 'green'}>
-                  {p.status === 'RECIBIDA' ? 'Recibida' : 'Descargada SIN'}
-                </Badge>
-              </td>
-              <td>
                 <Button variant="secondary" className="btn-sm" onClick={() => setDetail(p)}>Detalle</Button>{' '}
-                {p.status !== 'SIN_DESCARGADO' && p.invoiceNumber && (
-                  <Button variant="success" className="btn-sm" onClick={() => discharge(p)}>Descargo SIN</Button>
-                )}{' '}
                 <Button variant="danger" className="btn-sm" onClick={() => remove(p)}>Eliminar</Button>
               </td>
             </tr>
@@ -193,7 +181,7 @@ export default function Purchases() {
           </Field>
         </div>
         <div className="form-row">
-          <Field label="Nro. factura (para descargo SIN)">
+          <Field label="Nro. factura (referencia)">
             <Input value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })} />
           </Field>
           <Field label="Fecha"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
@@ -208,7 +196,9 @@ export default function Purchases() {
             {it.product && (
               <div className="form-row">
                 <Field label="Cantidad"><Input type="number" min="1" value={it.quantity} onChange={(e) => updateItem(idx, 'quantity', e.target.value)} /></Field>
-                <Field label="Precio unitario"><Input type="number" step="0.01" value={it.unitCost} onChange={(e) => updateItem(idx, 'unitCost', e.target.value)} /></Field>
+                <Field label="Precio unitario (coma o punto decimal)">
+                  <Input inputMode="decimal" placeholder="0.00" value={it.unitCost} onChange={(e) => updateItem(idx, 'unitCost', e.target.value)} />
+                </Field>
                 <Field label="Lote"><Input value={it.lot} onChange={(e) => updateItem(idx, 'lot', e.target.value)} /></Field>
                 <Field label="Fecha vencimiento (obligatoria)">
                   <Input type="date" className={!it.expiryDate ? 'input-error' : ''} value={it.expiryDate} onChange={(e) => updateItem(idx, 'expiryDate', e.target.value)} />
@@ -244,7 +234,12 @@ export default function Purchases() {
                 <tr key={it.id}>
                   <td>
                     <b>{it.product.name}</b>
-                    <div className="p-meta">{it.product.presentation} · {it.product.activeIngredient ? `P.A.: ${it.product.activeIngredient}` : ''}</div>
+                    <div className="p-meta">
+                      {it.product.form?.name || ''}{it.product.form ? ' · ' : ''}
+                      {it.product.ingredients.length
+                        ? it.product.ingredients.map((i) => `${i.ingredient}${i.concentration ? ` ${i.concentration}` : ''}`).join(' + ')
+                        : it.product.concentration || ''}
+                    </div>
                   </td>
                   <td><Badge color="blue">{it.laboratory?.name || it.product.laboratory?.name || '-'}</Badge></td>
                   <td>{it.lot || '-'}</td>

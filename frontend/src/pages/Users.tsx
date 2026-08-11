@@ -1,22 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api, errMsg } from '../api/client';
 import { Card, Table, Button, Modal, Field, Input, Select, Spinner, Alert, Badge } from '../components/ui';
-
-const MODULES = [
-  { key: 'dashboard', label: 'Dashboard' },
-  { key: 'inventory', label: 'Inventario' },
-  { key: 'purchases', label: 'Compras' },
-  { key: 'branches', label: 'Sucursales/Stock' },
-  { key: 'pos', label: 'Punto de Venta' },
-  { key: 'pos_qr', label: 'Venta QR/Tarjeta' },
-  { key: 'invoices', label: 'Facturacion SIN' },
-  { key: 'reports', label: 'Reportes' },
-  { key: 'clients', label: 'Clientes' },
-  { key: 'users', label: 'Usuarios' },
-  { key: 'licenses', label: 'Licencias' },
-  { key: 'backups', label: 'Backups' },
-  { key: 'logs', label: 'Logs' },
-];
+import { ACTION_GROUPS, ACTION_LABELS, ALL_ACTIONS } from '../perms';
 
 interface Branch { id: number; name: string; }
 
@@ -55,7 +40,7 @@ export default function Users() {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ username: '', password: '', fullName: '', role: 'cajero', branchId: '', permissions: ['dashboard', 'pos'] });
+    setForm({ username: '', password: '', fullName: '', role: 'cajero', branchId: '', permissions: ['dashboard.view', 'pos.view', 'pos.sale', 'sales.view', 'clients.view', 'clients.create', 'products.view'] });
     setError('');
     setModal(true);
   };
@@ -72,7 +57,7 @@ export default function Users() {
   };
 
   const setAll = (checked: boolean) => {
-    setForm((f) => ({ ...f, permissions: checked ? MODULES.map((m) => m.key) : [] }));
+    setForm((f) => ({ ...f, permissions: checked ? [...ALL_ACTIONS] : [] }));
   };
 
   const save = async () => {
@@ -108,14 +93,14 @@ export default function Users() {
       </div>
       <Alert type="error">{error}</Alert>
       <Card>
-        <Table head={['Usuario', 'Nombre', 'Rol', 'Sucursal', 'Modulos habilitados', 'Estado', 'Acciones']}>
+        <Table head={['Usuario', 'Nombre', 'Rol', 'Sucursal', 'Acciones habilitadas', 'Estado', 'Acciones']}>
           {rows.map((u) => (
             <tr key={u.id}>
               <td><b>{u.username}</b></td>
               <td>{u.fullName}</td>
               <td><Badge color={u.role === 'admin' ? 'red' : u.role === 'tecnico' ? 'blue' : 'yellow'}>{ROLE_LABEL[u.role] || u.role}</Badge></td>
               <td>{u.branch?.name || '-'}</td>
-              <td>{(u.permissions || []).length} de {MODULES.length}</td>
+              <td>{(u.permissions || []).length} de {ALL_ACTIONS.length}</td>
               <td>{u.active ? <Badge color="green">Activo</Badge> : <Badge color="gray">Inactivo</Badge>}</td>
               <td>
                 <Button variant="secondary" className="btn-sm" onClick={() => openEdit(u)}>Editar</Button>{' '}
@@ -152,22 +137,34 @@ export default function Users() {
             </Select>
           </Field>
         </div>
-        <h4 style={{ margin: '12px 0 6px' }}>Permisos por modulo (checkbox)</h4>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <span style={{ color: 'var(--muted)', fontSize: 12 }}>{form.permissions.length} de {MODULES.length} habilitados</span>
-          <div>
-            <Button variant="ghost" className="btn-sm" onClick={() => setAll(true)}>Habilitar todos</Button>
-            <Button variant="ghost" className="btn-sm" onClick={() => setAll(false)}>Deshabilitar todos</Button>
-          </div>
-        </div>
-        <div className="checkbox-grid">
-          {MODULES.map((m) => (
-            <label className="checkbox-row" key={m.key}>
-              <input type="checkbox" checked={form.permissions.includes(m.key)} onChange={() => togglePerm(m.key)} />
-              {m.label}
-            </label>
-          ))}
-        </div>
+        {form.role !== 'admin' && (
+          <>
+            <div className="alert alert-info" style={{ marginTop: 8 }}>
+              La cuenta admin siempre tiene todos los permisos. Para el resto, marque las acciones puntuales.
+            </div>
+            <h4 style={{ margin: '12px 0 6px' }}>Permisos por accion</h4>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ color: 'var(--muted)', fontSize: 12 }}>{form.permissions.length} de {ALL_ACTIONS.length} habilitados</span>
+              <div>
+                <Button variant="ghost" className="btn-sm" onClick={() => setAll(true)}>Habilitar todos</Button>
+                <Button variant="ghost" className="btn-sm" onClick={() => setAll(false)}>Deshabilitar todos</Button>
+              </div>
+            </div>
+            {Object.entries(ACTION_GROUPS).map(([group, actions]) => (
+              <div key={group} style={{ marginBottom: 10 }}>
+                <b style={{ fontSize: 13 }}>{group}</b>
+                <div className="checkbox-grid" style={{ marginTop: 4 }}>
+                  {actions.map((a) => (
+                    <label className="checkbox-row" key={a}>
+                      <input type="checkbox" checked={form.permissions.includes(a)} onChange={() => togglePerm(a)} />
+                      {ACTION_LABELS[a] || a}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
       </Modal>
     </div>
   );

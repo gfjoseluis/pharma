@@ -14,6 +14,9 @@
   --radius: 10px;
 }
 body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+h1 { font-size: 22px; line-height: 1.3; }
+h2 { font-size: 18px; line-height: 1.3; }
+h3 { font-size: 15px; }
 
 /* ================= Layout ================= */
 .layout { display: flex; min-height: 100vh; }
@@ -126,6 +129,10 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); co
 .product-row .p-meta { color: var(--muted); font-size: 12px; }
 .qty-control { display: flex; align-items: center; gap: 8px; }
 .qty-control button { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: #fff; cursor: pointer; font-size: 16px; }
+.qty-control .qty-input { width: 52px; height: 30px; text-align: center; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
+.seg-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.seg-button { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: #fff; cursor: pointer; font-weight: 600; font-size: 13px; }
+.seg-button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 .qr-box { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .qr-box img { border: 1px solid var(--border); border-radius: 8px; padding: 6px; }
 .total-line { display: flex; justify-content: space-between; font-size: 18px; font-weight: 700; margin-top: 10px; }
@@ -141,3 +148,87 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); co
 .kpi { flex: 1; min-width: 150px; background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
 .kpi .k-label { color: var(--muted); font-size: 12px; }
 .kpi .k-value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+
+/* ================= Compacto: pantallas de baja resolucion (portatiles 1366x768 o menos) ================= */
+/* La clase .app-compact se aplica por JS (window.screen) para que funcione
+   aunque el usuario tenga el zoom del navegador distinto de 100%, y re-escala
+   todo el sitio sin depender de media queries. */
+html.app-compact { zoom: 0.8; }
+
+@media (max-height: 820px), (max-width: 1366px) {
+  body { font-size: 12.5px; }
+  h1 { font-size: 19px; }
+  h2 { font-size: 16px; }
+  h3 { font-size: 13.5px; }
+
+  .sidebar { width: 196px; }
+  .brand { padding: 11px 16px; font-size: 15px; }
+  .nav-item { padding: 7px 16px; font-size: 12px; gap: 8px; }
+  .sidebar-foot { padding: 10px 12px; }
+  .uc-sub { font-size: 11px; }
+  .main { margin-left: 196px; padding: 14px 16px; }
+
+  .card { margin-bottom: 14px; }
+  .card-head { padding: 10px 14px; }
+  .card-head h3 { font-size: 13.5px; }
+  .card-body { padding: 12px 14px; }
+  .card-foot-pad { padding: 10px 14px; }
+
+  .grid { gap: 12px; }
+  .grid-4, .grid-3 { grid-template-columns: repeat(2, 1fr); }
+
+  .stat { padding: 11px 14px; }
+  .stat .label { font-size: 11.5px; }
+  .stat .value { font-size: 19px; }
+  .stat .sub { font-size: 11px; }
+
+  .input { padding: 6px 9px; font-size: 13px; border-radius: 7px; }
+  .field > span { font-size: 12px; }
+  .checkbox-row { font-size: 12px; }
+
+  .btn { padding: 6px 12px; font-size: 12.5px; border-radius: 7px; }
+  .btn-sm { padding: 3px 8px; font-size: 11px; }
+
+  .table th, .table td { padding: 6px 9px; }
+  .table th { font-size: 11px; }
+
+  .badge { padding: 2px 8px; font-size: 10.5px; }
+
+  .modal-head { padding: 12px 16px; }
+  .modal-body { padding: 14px 16px; }
+  .modal-foot { padding: 10px 16px; }
+
+  .kpi { padding: 10px 12px; }
+  .kpi .k-value { font-size: 16px; }
+  .kpi .k-label { font-size: 11px; }
+
+  .pos-layout { grid-template-columns: 1fr 330px; gap: 14px; }
+  .pos-search input { font-size: 15px; padding: 10px; }
+  .product-row { padding: 9px 12px; }
+  .product-row .p-meta { font-size: 11px; }
+  .qty-control button { width: 25px; height: 25px; font-size: 14px; }
+  .qty-control .qty-input { width: 46px; height: 27px; font-size: 13px; }
+  .seg-button { padding: 6px 12px; font-size: 12px; }
+  .total-line { font-size: 16px; }
+
+  .tab { padding: 6px 14px; font-size: 12px; }
+  .tabs { margin-bottom: 12px; gap: 5px; }
+
+  .chart-box { height: 240px; }
+  .picker-item { padding: 7px 10px; font-size: 12px; }
+  .picker-selected { padding: 6px 10px; }
+  .auth-card { padding: 26px; width: 340px; }
+  .auth-title { font-size: 18px; }
+  .auth-sub { font-size: 12px; margin-bottom: 16px; }
+
+  .empty { padding: 26px; }
+  .alert { padding: 8px 12px; font-size: 12px; }
+}
+
+@media (max-height: 700px) and (min-width: 769px) {
+  body { font-size: 12px; }
+  .pos-search input { font-size: 14px; padding: 8px; }
+  .product-results { max-height: 40vh; }
+  .stat .value { font-size: 17px; }
+  .kpi .k-value { font-size: 15px; }
+}

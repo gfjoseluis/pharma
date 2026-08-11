@@ -5,8 +5,10 @@ export interface PickedProduct {
   id: number;
   sku: string;
   name: string;
-  activeIngredient: string | null;
-  presentation: string;
+  ingredients: Array<{ ingredient: string; concentration: string | null }>;
+  form: { id: number; name: string } | null;
+  concentration: string | null;
+  restrictedUse: boolean;
   lab: { id: number; name: string } | null;
   unit: string | null;
   price: number;
@@ -26,7 +28,8 @@ interface Props {
 
 /**
  * Buscador de productos: busca por nombre comercial, principio activo,
- * presentacion, SKU o codigo de barras. Muestra "nombre - presentacion - laboratorio".
+ * forma, presentacion, SKU o codigo de barras.
+ * Muestra "nombre - forma - principios activos - laboratorio".
  */
 export default function ProductPicker({ value, onSelect, placeholder, showStock, branchId, disabled }: Props) {
   const [q, setQ] = useState('');
@@ -45,6 +48,9 @@ export default function ProductPicker({ value, onSelect, placeholder, showStock,
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
+  const ingredientsText = (list: Array<{ ingredient: string; concentration: string | null }>) =>
+    list.map((i) => `${i.ingredient}${i.concentration ? ` ${i.concentration}` : ''}`).join(' + ');
+
   const doSearch = (text: string) => {
     setQ(text);
     setOpen(true);
@@ -60,10 +66,12 @@ export default function ProductPicker({ value, onSelect, placeholder, showStock,
   };
 
   const label = (p: PickedProduct) =>
-    [p.name, p.activeIngredient, p.presentation, p.lab?.name].filter(Boolean).join(' -> ');
+    [p.name, p.form?.name, p.ingredients.length ? ingredientsText(p.ingredients) : p.concentration, p.lab?.name]
+      .filter(Boolean)
+      .join(' -> ');
 
   const sublabel = (p: PickedProduct) =>
-    `${p.sku}${p.unit ? ` (${p.unit})` : ''}${showStock ? ` · stock: ${p.stockOwn}` : ''}`;
+    `${p.sku}${p.unit ? ` (${p.unit})` : ''}${p.restrictedUse ? ' · USO RESTRINGIDO' : ''}${showStock ? ` · stock: ${p.stockOwn}` : ''}`;
 
   return (
     <div ref={boxRef} style={{ position: 'relative' }}>
@@ -81,7 +89,7 @@ export default function ProductPicker({ value, onSelect, placeholder, showStock,
         <input
           ref={inputRef}
           className="input"
-          placeholder={placeholder || 'Buscar por nombre, principio activo o presentacion...'}
+          placeholder={placeholder || 'Buscar por nombre, principio activo o forma...'}
           value={q}
           disabled={disabled}
           onFocus={() => { setOpen(true); if (!results.length) doSearch(''); }}

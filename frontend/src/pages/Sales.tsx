@@ -7,19 +7,29 @@ interface SaleRow {
   number: string;
   type: string;
   paymentStatus: string;
+  paymentMethod: string;
   status: string;
   total: number;
   createdAt: string;
   client: { id: number; name: string; ciNit: string } | null;
   user: { fullName: string };
   branch: { name: string };
-  invoice: { id: number; number: string; status: string } | null;
   items: Array<{
-    product: { id: number; name: string; sku: string; presentation: string; activeIngredient: string | null; laboratory: { id: number; name: string } | null };
+    product: {
+      id: number;
+      name: string;
+      sku: string;
+      concentration: string | null;
+      form: { id: number; name: string } | null;
+      ingredients: Array<{ ingredient: string; concentration: string | null }>;
+      laboratory: { id: number; name: string } | null;
+    };
     quantity: number;
     price: number;
   }>;
 }
+
+const METHOD_LABEL: Record<string, string> = { EFECTIVO: 'Efectivo', TARJETA: 'Tarjeta', QR: 'QR' };
 
 export default function Sales() {
   const [sales, setSales] = useState<SaleRow[]>([]);
@@ -40,10 +50,6 @@ export default function Sales() {
 
   useEffect(load, []);
 
-  const printInvoice = (id: number) => {
-    window.open(`/api/invoices/print/${id}?token=${localStorage.getItem('token')}`, '_blank');
-  };
-
   const doAnnul = async () => {
     if (!annulSale) return;
     try {
@@ -56,33 +62,26 @@ export default function Sales() {
     }
   };
 
-  const annulInvoice = async (invoiceId: number) => {
-    if (!window.confirm('¿Anular esta factura? No se puede modificar, solo anular.')) return;
-    try {
-      await api.post(`/invoices/${invoiceId}/anular`, { reason: 'Anulacion desde listado de ventas' });
-      load();
-    } catch (e) {
-      setError(errMsg(e));
-    }
-  };
+  const ingredientsText = (list: Array<{ ingredient: string; concentration: string | null }>) =>
+    list.map((i) => `${i.ingredient}${i.concentration ? ` ${i.concentration}` : ''}`).join(' + ');
 
   if (loading) return <Spinner />;
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2>Ventas recientes (facturacion)</h2>
+        <h2>Ventas recientes</h2>
         <Button variant="secondary" onClick={load}>Actualizar</Button>
       </div>
       <Alert type="error">{error}</Alert>
       <Card>
-        <Table head={['#', 'Fecha', 'Cliente', 'Tipo', 'Pago', 'Estado', 'Factura', 'Cajero', 'Total', 'Acciones']}>
+        <Table head={['#', 'Fecha', 'Cliente', 'Metodo', 'Pago', 'Estado', 'Cajero', 'Total', 'Acciones']}>
           {sales.map((s) => (
             <tr key={s.id}>
               <td>{s.number}</td>
               <td>{fmtDate(s.createdAt)}</td>
               <td>{s.client ? `${s.client.name} (${s.client.ciNit})` : 'MOSTRADOR'}</td>
-              <td><Badge color={s.type === 'SIMPLE' ? 'gray' : s.type === 'QR' ? 'blue' : 'yellow'}>{s.type}</Badge></td>
+              <td><Badge color="blue">{METHOD_LABEL[s.paymentMethod] || s.paymentMethod}</Badge></td>
               <td>
                 <Badge color={s.paymentStatus === 'PAID' ? 'green' : s.paymentStatus === 'PENDING' ? 'yellow' : 'red'}>
                   {s.paymentStatus}
@@ -92,24 +91,6 @@ export default function Sales() {
                 <Badge color={s.status === 'ACTIVE' ? 'green' : s.status === 'ANNULLED' ? 'red' : 'gray'}>
                   {s.status === 'ANNULLED' ? 'ANULADA' : s.status}
                 </Badge>
-              </td>
-              <td>
-                {s.invoice ? (
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <span>{s.invoice.number}</span>
-                    <Badge color={s.invoice.status === 'ISSUED' ? 'green' : s.invoice.status === 'ANNULLED' ? 'red' : 'yellow'}>
-                      {s.invoice.status}
-                    </Badge>
-                    {s.invoice.status === 'ISSUED' && (
-                      <Button variant="ghost" className="btn-sm" onClick={() => printInvoice(s.invoice!.id)}>🖨 Imprimir</Button>
-                    )}
-                    {s.invoice.status === 'ISSUED' && (
-                      <Button variant="danger" className="btn-sm" onClick={() => annulInvoice(s.invoice!.id)}>Anular</Button>
-                    )}
-                  </div>
-                ) : (
-                  <span className="badge badge-gray">—</span>
-                )}
               </td>
               <td>{s.user.fullName}</td>
               <td><b>{fmtMoney(s.total)}</b></td>
@@ -132,7 +113,7 @@ export default function Sales() {
         <Button variant="secondary" onClick={() => setAnnulSale(null)}>Cancelar</Button>
         <Button variant="danger" onClick={doAnnul}>Anular (devuelve stock)</Button>
       </>}>
-        <p style={{ marginBottom: 10 }}>La venta y su factura (si existe) seran anuladas. El stock se devuelve a la sucursal.</p>
+        <p style={{ marginBottom: 10 }}>La venta sera anulada y el stock se devuelve a la sucursal.</p>
         <Field label="Motivo (opcional)"><Input value={annulReason} onChange={(e) => setAnnulReason(e.target.value)} /></Field>
       </Modal>
 
@@ -142,18 +123,20 @@ export default function Sales() {
             <div className="grid grid-2">
               <div className="kpi"><div className="k-label">Cliente</div><div className="k-value" style={{ fontSize: 15 }}>{detail.client ? `${detail.client.name} (${detail.client.ciNit})` : 'MOSTRADOR'}</div></div>
               <div className="kpi"><div className="k-label">Fecha</div><div className="k-value" style={{ fontSize: 15 }}>{fmtDate(detail.createdAt)}</div></div>
-              <div className="kpi"><div className="k-label">Tipo / Pago</div><div className="k-value" style={{ fontSize: 15 }}>{detail.type} · <Badge color={detail.paymentStatus === 'PAID' ? 'green' : 'yellow'}>{detail.paymentStatus}</Badge></div></div>
+              <div className="kpi"><div className="k-label">Cajero</div><div className="k-value" style={{ fontSize: 15 }}>{detail.user.fullName}</div></div>
               <div className="kpi"><div className="k-label">Total</div><div className="k-value" style={{ fontSize: 15 }}>{fmtMoney(detail.total)}</div></div>
+              <div className="kpi"><div className="k-label">Metodo de pago</div><div className="k-value" style={{ fontSize: 15 }}><Badge color="blue">{METHOD_LABEL[detail.paymentMethod] || detail.paymentMethod}</Badge></div></div>
             </div>
-            <Table head={['Producto', 'Laboratorio', 'Presentacion', 'Cant.', 'P. unit.', 'Subtotal']}>
+            <Table head={['Producto', 'Principios activos', 'Forma', 'Laboratorio', 'Cant.', 'P. unit.', 'Subtotal']}>
               {detail.items.map((it, i) => (
                 <tr key={i}>
                   <td>
                     <b>{it.product.name}</b>
-                    <div className="p-meta">{it.product.activeIngredient ? `P.A.: ${it.product.activeIngredient}` : ''}</div>
+                    <div className="p-meta">SKU {it.product.sku}</div>
                   </td>
-                  <td><Badge color="blue">{it.product.laboratory?.name || '-'}</Badge></td>
-                  <td>{it.product.presentation}</td>
+                  <td>{it.product.ingredients.length ? ingredientsText(it.product.ingredients) : it.product.concentration || '-'}</td>
+                  <td>{it.product.form?.name || '-'}</td>
+                  <td>{it.product.laboratory?.name ? <Badge color="blue">{it.product.laboratory.name}</Badge> : '-'}</td>
                   <td>{it.quantity}</td>
                   <td>{fmtMoney(it.price)}</td>
                   <td>{fmtMoney(Number(it.quantity) * Number(it.price))}</td>

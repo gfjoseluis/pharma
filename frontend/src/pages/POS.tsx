@@ -7,9 +7,11 @@ interface ProductHit {
   id: number;
   sku: string;
   name: string;
-  activeIngredient: string | null;
+  ingredients: Array<{ ingredient: string; concentration: string | null }>;
+  form: { id: number; name: string } | null;
+  concentration: string | null;
+  restrictedUse: boolean;
   barcode: string | null;
-  presentation: string;
   price: number;
   category: string | null;
   lab: { id: number; name: string } | null;
@@ -24,7 +26,8 @@ interface CartItem {
   name: string;
   sku: string;
   lab: string | null;
-  presentation: string;
+  form: string | null;
+  ingredients: string;
   price: number;
   quantity: number;
   stockOwn: number;
@@ -42,12 +45,17 @@ interface SaleResult {
     number: string;
     total: number;
     paymentStatus: string;
+    paymentMethod: string;
     type: string;
   };
-  invoice: { id: number; number: string } | null;
-  qrCode: string | null;
   paymentPending: boolean;
 }
+
+const METHOD_LABEL: Record<string, string> = { EFECTIVO: 'efectivo', TARJETA: 'tarjeta', QR: 'QR / transferencia' };
+const METHOD_BTN: Record<string, string> = { EFECTIVO: '💵 Efectivo', TARJETA: '💳 Tarjeta', QR: '📱 QR' };
+
+const ingredientsText = (list: Array<{ ingredient: string; concentration: string | null }>) =>
+  list.map((i) => `${i.ingredient}${i.concentration ? ` ${i.concentration}` : ''}`).join(' + ');
 
 export default function POS() {
   const { user, hasPerm } = useAuth();
@@ -59,14 +67,13 @@ export default function POS() {
   const [selectedClient, setSelectedClient] = useState<ClientOption | null>(null);
   const [clientModal, setClientModal] = useState(false);
   const [newClient, setNewClient] = useState({ name: '', ciNit: '', address: '', phone: '' });
-  const [payType, setPayType] = useState<'SIMPLE' | 'QR' | 'CARD'>('SIMPLE');
-  const [withInvoice, setWithInvoice] = useState(false);
-  const [qrResult, setQrResult] = useState<SaleResult | null>(null);
+  const [payMethod, setPayMethod] = useState<'EFECTIVO' | 'TARJETA' | 'QR'>('EFECTIVO');
+  const [saleResult, setSaleResult] = useState<SaleResult | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  const canQR = hasPerm('pos_qr') && (user?.branch?.type === 'mediana' || user?.branch?.type === 'grande');
+  const canSale = hasPerm('pos.sale');
 
   useEffect(() => {
     api.get('/clients?q=').then((r) => setClients(r.data)).catch(() => {});
@@ -100,7 +107,8 @@ export default function POS() {
         name: p.name,
         sku: p.sku,
         lab: p.lab?.name || null,
-        presentation: p.presentation,
+        form: p.form?.name || null,
+        ingredients: ingredientsText(p.ingredients),
         price: Number(p.price),
         quantity: 1,
         stockOwn: p.stockOwn,
@@ -121,6 +129,14 @@ export default function POS() {
           return { ...c, quantity: nq };
         })
         .filter((c) => c.quantity > 0)
+    );
+  };
+
+  const setQty = (productId: number, raw: string) => {
+    const n = parseInt(raw, 10);
+    if (isNaN(n)) return;
+    setCart((prev) =>
+      prev.map((c) => (c.productId === productId ? { ...c, quantity: Math.min(Math.max(n, 1), c.stockOwn) } : c))
     );
   };
 
@@ -157,86 +173,34 @@ export default function POS() {
         if (match) clientId = match.id;
       }
       const body: Record<string, unknown> = {
-        type: payType,
+        type: 'SIMPLE',
+        paymentMethod: payMethod,
         items: cart.map((c) => ({ productId: c.productId, quantity: c.quantity })),
-        withInvoice,
       };
       if (clientId) body.clientId = clientId;
       const r = await api.post('/sales', body);
       const result: SaleResult = r.data;
       setCart([]);
       setSelectedClient(null);
-      setWithInvoice(false);
-      setPayType('SIMPLE');
-      if (result.paymentPending) {
-        setQrResult(result);
-      } else {
-        if (result.invoice) printInvoice(result.invoice.id);
-        setQrResult(result);
-        setTimeout(() => setQrResult(null), 4000);
-      }
+      setClientQ('');
+      setSaleResult(result);
     } catch (err) {
       setError(errMsg(err));
     } finally {
       setBusy(false);
     }
-  };
-
-  const confirmQRPayment = async () => {
-    if (!qrResult) return;
-    setBusy(true);
-    try {
-      const r = await api.post('/payments/qr/confirm', { saleId: qrResult.sale.id });
-      const invoice = r.data.invoice || qrResult.invoice;
-      setQrResult({ ...qrResult, paymentPending: false, invoice, sale: { ...qrResult.sale, paymentStatus: 'PAID' } });
-      if (invoice) printInvoice(invoice.id);
-      setError('');
-    } catch (err) {
-      setError(errMsg(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const confirmCardPayment = async () => {
-    if (!qrResult) return;
-    setBusy(true);
-    try {
-      const r = await api.post('/payments/card/confirm', { saleId: qrResult.sale.id });
-      const invoice = r.data.invoice || qrResult.invoice;
-      setQrResult({ ...qrResult, paymentPending: false, invoice, sale: { ...qrResult.sale, paymentStatus: 'PAID' } });
-      if (invoice) printInvoice(invoice.id);
-      setError('');
-    } catch (err) {
-      setError(errMsg(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const printInvoice = (invoiceId: number) => {
-    window.open(`/api/invoices/print/${invoiceId}?token=${localStorage.getItem('token')}`, '_blank');
   };
 
   const filteredClients = clientQ.trim()
     ? clients.filter((c) => c.name.toLowerCase().includes(clientQ.toLowerCase()) || c.ciNit.includes(clientQ))
     : clients;
 
-  const needsClient = (payType === 'QR' || payType === 'CARD' || withInvoice);
-
-  const hasClient = () => {
-    if (selectedClient) return true;
-    return !!clientQ.trim() && clients.some(
-      (c) => c.name.toLowerCase() === clientQ.trim().toLowerCase() || c.ciNit === clientQ.trim()
-    );
-  };
-
   return (
     <div>
       <h2 style={{ marginBottom: 16 }}>Punto de Venta — {user?.branch?.name || 'Sin sucursal'}</h2>
       <Alert type="error">{error}</Alert>
       <div className="pos-layout">
-        <Card title="Buscar producto (nombre comercial, principio activo o presentacion)">
+        <Card title="Buscar producto (nombre, principio activo, forma o presentacion)">
           <div className="pos-search">
             <input
               ref={searchRef}
@@ -252,12 +216,14 @@ export default function POS() {
                 <div key={p.id} className="product-row" onClick={() => p.stockOwn > 0 && addToCart(p)}>
                   <div>
                     <div className="p-name">
-                      {p.name} <span className="badge badge-gray">{p.presentation}</span>
+                      {p.name}
+                      {p.form && <span className="badge badge-gray">{p.form.name}</span>}
                       {p.lab && <span className="badge badge-blue">{p.lab.name}</span>}
-                      {p.unit && <span className="badge badge-gray">{p.unit}</span>}
+                      {p.restrictedUse && <span className="badge badge-red">Uso restringido</span>}
                     </div>
                     <div className="p-meta">
-                      {p.activeIngredient ? `Principio activo: ${p.activeIngredient} · ` : ''}SKU {p.sku} · {fmtMoney(p.price)}
+                      {p.ingredients.length > 0 ? `Principios activos: ${ingredientsText(p.ingredients)} · ` : ''}
+                      SKU {p.sku} · {fmtMoney(p.price)}
                       {p.stockOwn > 0 ? ` · stock en su sucursal: ${p.stockOwn}` : ''}
                     </div>
                     {p.stockOwn <= 0 && p.branches.length > 0 && (
@@ -293,12 +259,20 @@ export default function POS() {
               <div>
                 <div className="p-name">{c.name}</div>
                 <div className="p-meta">
-                  {c.presentation}{c.lab ? ` · ${c.lab}` : ''} · {fmtMoney(c.price)} x {c.quantity} = {fmtMoney(c.price * c.quantity)}
+                  {c.form}{c.form ? ' · ' : ''}{c.lab ? `${c.lab} · ` : ''}{fmtMoney(c.price)} x {c.quantity} = {fmtMoney(c.price * c.quantity)}
+                  {c.ingredients ? <span> · {c.ingredients}</span> : ''}
                 </div>
               </div>
               <div className="qty-control">
                 <button onClick={() => changeQty(c.productId, -1)}>−</button>
-                <span>{c.quantity}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={c.stockOwn}
+                  className="qty-input"
+                  value={c.quantity}
+                  onChange={(e) => setQty(c.productId, e.target.value)}
+                />
                 <button onClick={() => changeQty(c.productId, 1)}>+</button>
               </div>
             </div>
@@ -313,12 +287,12 @@ export default function POS() {
       <Card title="Finalizar venta">
         <div className="form-row">
           <div className="field" style={{ minWidth: 280 }}>
-            <span>Cliente (buscar por nombre o NIT/CI)</span>
+            <span>Cliente (opcional, buscar por nombre o NIT/CI)</span>
             <div style={{ display: 'flex', gap: 8 }}>
               <input
                 className="input"
                 list="client-options"
-                placeholder="Buscar cliente..."
+                placeholder="Buscar cliente... (MOSTRADOR si se deja vacio)"
                 value={selectedClient ? `${selectedClient.name} (${selectedClient.ciNit})` : clientQ}
                 onChange={(e) => {
                   setSelectedClient(null);
@@ -327,7 +301,7 @@ export default function POS() {
               />
               <datalist id="client-options">
                 {filteredClients.map((c) => (
-                  <option key={c.id} value={`${c.name} (${c.ciNit})`} data-id={c.id} />
+                  <option key={c.id} value={`${c.name} (${c.ciNit})`} />
                 ))}
               </datalist>
               <Button variant="secondary" onClick={openClientModal}>+ Nuevo</Button>
@@ -342,37 +316,35 @@ export default function POS() {
               </div>
             )}
           </div>
-
-          <div className="field">
-            <span>Tipo de pago</span>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Button variant={payType === 'SIMPLE' ? 'primary' : 'secondary'} onClick={() => setPayType('SIMPLE')}>✓ Efectivo</Button>
-              {canQR && <Button variant={payType === 'QR' ? 'primary' : 'secondary'} onClick={() => setPayType('QR')}>QR</Button>}
-              {canQR && <Button variant={payType === 'CARD' ? 'primary' : 'secondary'} onClick={() => setPayType('CARD')}>Tarjeta</Button>}
-            </div>
-          </div>
-
-          <div className="field">
-            <span>Factura</span>
-            <label className="checkbox-row">
-              <input type="checkbox" checked={withInvoice} onChange={(e) => setWithInvoice(e.target.checked)} />
-              Emitir factura (requiere cliente con NIT/CI)
-            </label>
-          </div>
         </div>
 
-        {needsClient && !hasClient() && (
-          <Alert type="info">Para este tipo de venta seleccione un cliente (con CI/NIT) o cree uno nuevo.</Alert>
-        )}
+        <div className="form-row" style={{ alignItems: 'flex-end' }}>
+          <div className="field">
+            <span>Metodo de pago</span>
+            <div className="seg-buttons">
+              {(['EFECTIVO', 'TARJETA', 'QR'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  className={`seg-button ${payMethod === m ? 'active' : ''}`}
+                  onClick={() => setPayMethod(m)}
+                >
+                  {payMethod === m ? '✓ ' : ''}{METHOD_BTN[m]}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
           <Button
             variant="success"
-            disabled={busy || !cart.length || (needsClient && !hasClient())}
+            disabled={busy || !cart.length || !canSale}
             onClick={doSale}
           >
-            {busy ? 'Procesando...' : 'Cobrar venta'}
+            {busy ? 'Procesando...' : `Cobrar (${payMethod === 'EFECTIVO' ? 'efectivo' : payMethod === 'TARJETA' ? 'tarjeta' : 'QR'})`}
           </Button>
+          {!canSale && <span className="p-meta" style={{ alignSelf: 'center' }}>Sin permiso para cobrar: contacte al administrador.</span>}
         </div>
       </Card>
 
@@ -387,42 +359,19 @@ export default function POS() {
         <Field label="Telefono (opcional)"><Input value={newClient.phone} onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })} /></Field>
       </Modal>
 
-      {/* Modal: pago QR / tarjeta */}
+      {/* Modal: venta registrada */}
       <Modal
-        title={`Pago ${qrResult?.sale.type === 'CARD' ? 'con tarjeta' : 'con QR'}`}
-        open={!!qrResult}
-        onClose={() => setQrResult(null)}
-        footer={
-          qrResult?.paymentPending ? (
-            <>
-              {qrResult.sale.type === 'QR' ? (
-                <Button variant="success" onClick={confirmQRPayment} disabled={busy}>Confirmar pago bancario (simulado)</Button>
-              ) : (
-                <Button variant="success" onClick={confirmCardPayment} disabled={busy}>Confirmar pago con tarjeta</Button>
-              )}
-            </>
-          ) : (
-            <Button variant="primary" onClick={() => setQrResult(null)}>Cerrar</Button>
-          )
-        }
+        title="Venta registrada"
+        open={!!saleResult}
+        onClose={() => setSaleResult(null)}
+        footer={<Button variant="primary" onClick={() => setSaleResult(null)}>Nueva venta</Button>}
       >
-        {qrResult && (
-          <div className="qr-box">
-            {qrResult.sale.type === 'QR' && qrResult.qrCode && (
-              <img src={qrResult.qrCode} alt="QR de pago" />
-            )}
-            <div><b>Venta:</b> {qrResult.sale.number}</div>
-            <div><b>Total:</b> {fmtMoney(qrResult.sale.total)}</div>
-            {qrResult.paymentPending ? (
-              <Badge color="yellow">Esperando confirmacion bancaria</Badge>
-            ) : (
-              <>
-                <Badge color="green">PAGADO</Badge>
-                {qrResult.invoice && (
-                  <div className="alert alert-success">Factura {qrResult.invoice.number} emitida e impresa</div>
-                )}
-              </>
-            )}
+        {saleResult && (
+          <div style={{ textAlign: 'center', padding: 8 }}>
+            <div style={{ fontSize: 40 }}>✅</div>
+            <div style={{ fontSize: 18, fontWeight: 700, margin: '6px 0' }}>{saleResult.sale.number}</div>
+            <div>Total cobrado: <b>{fmtMoney(saleResult.sale.total)}</b></div>
+            <Badge color="green">PAGADO EN {METHOD_LABEL[saleResult.sale.paymentMethod] || saleResult.sale.paymentMethod}</Badge>
           </div>
         )}
       </Modal>

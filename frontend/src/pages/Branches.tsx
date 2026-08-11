@@ -9,7 +9,7 @@ interface StockRow {
   lot: string;
   quantity: number;
   expiryDate: string | null;
-  product: { id: number; name: string; sku: string; presentation: string; minStock: number; unitMeasure: { shortName: string | null } | null };
+  product: { id: number; name: string; sku: string; minStock: number; unitMeasure: { shortName: string | null } | null };
   branch: { id: number; name: string };
 }
 
@@ -111,7 +111,7 @@ export default function Branches() {
   const typeLabel: Record<string, string> = { pequena: 'Pequena', mediana: 'Mediana', grande: 'Grande' };
   const moveLabel: Record<string, string> = {
     PURCHASE: 'Compra', DISTRIBUTION: 'Distribucion', TRANSFER_OUT: 'Transferencia salida',
-    TRANSFER_IN: 'Transferencia entrada', SALE: 'Venta', SIN_DISCHARGE: 'Descargo SIN', ADJUSTMENT: 'Ajuste',
+    TRANSFER_IN: 'Transferencia entrada', SALE: 'Venta', ADJUSTMENT: 'Ajuste',
   };
 
   return (
@@ -273,8 +273,8 @@ export default function Branches() {
           <Field label="Tipo">
             <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
               <option value="pequena">Pequena (solo venta simple)</option>
-              <option value="mediana">Mediana (QR y tarjeta)</option>
-              <option value="grande">Grande (QR y tarjeta)</option>
+              <option value="mediana">Mediana</option>
+              <option value="grande">Grande</option>
             </Select>
           </Field>
           <Field label="Telefono"><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>

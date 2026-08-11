@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { api } from '../api/client';
+import { hasAction } from '../perms';
 
 export interface AuthUser {
   id: number;
@@ -54,8 +55,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  const hasPerm = (module: string) =>
-    user ? user.role === 'admin' || (Array.isArray(user.permissions) && user.permissions.includes(module)) : false;
+  const hasPerm = (action: string) =>
+    user ? user.role === 'admin' || hasAction(user.permissions, action) : false;
 
   return <Ctx.Provider value={{ user, loading, login, logout, hasPerm }}>{children}</Ctx.Provider>;
 }

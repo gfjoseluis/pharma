@@ -9,7 +9,7 @@ interface Metrics {
   profitToday: number;
   lowStock: number;
   expiring: number;
-  invoicesToday: number;
+  salesCount: number;
   byDay: Array<{ date: string; total: number }>;
 }
 
@@ -28,7 +28,7 @@ export default function Dashboard() {
           profitToday: report.totals.totalProfit,
           lowStock: invRes.data.lowStock.length,
           expiring: invRes.data.expiring.length,
-          invoicesToday: report.totals.totalCount,
+          salesCount: report.totals.totalCount,
           byDay,
         });
       })
@@ -39,11 +39,11 @@ export default function Dashboard() {
   if (!data) return <Spinner />;
 
   const cards = [
-    { label: 'Ventas del dia', value: fmtMoney(data.salesToday), sub: 'Total facturado hoy' },
+    { label: 'Ventas del dia', value: fmtMoney(data.salesToday), sub: 'Total vendido hoy' },
     { label: 'Ganancias (semana)', value: fmtMoney(data.profitToday), sub: 'Utilidad estimada' },
     { label: 'Stock bajo', value: data.lowStock, sub: 'Productos bajo minimo' },
     { label: 'Lotes por vencer', value: data.expiring, sub: 'Vencen en 60 dias' },
-    { label: 'Facturas emitidas', value: data.invoicesToday, sub: 'Ultimos 7 dias' },
+    { label: 'Ventas registradas', value: data.salesCount, sub: 'Ultimos 7 dias' },
   ];
 
   return (

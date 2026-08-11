@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api, errMsg } from '../api/client';
 import { Card, Select, Button, Spinner, Alert, fmtMoney, fmtDate } from '../components/ui';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line } from 'recharts';
 
 type Range = 'daily' | 'weekly' | 'monthly' | 'custom';
 
@@ -11,7 +11,6 @@ export default function Reports() {
   const [to, setTo] = useState('');
   const [report, setReport] = useState<any>(null);
   const [inventory, setInventory] = useState<any>(null);
-  const [sin, setSin] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -29,7 +28,6 @@ export default function Reports() {
   useEffect(() => {
     loadSales();
     api.get('/reports/inventory').then((r) => setInventory(r.data)).catch((e) => setError(errMsg(e)));
-    api.get('/reports/sin').then((r) => setSin(r.data)).catch(() => {});
   }, [range]);
 
   if (loading && !report) return <Spinner />;
@@ -42,15 +40,6 @@ export default function Reports() {
   };
 
   const print = () => window.print();
-
-  const pieData = sin
-    ? [
-        { name: 'Emitidas', value: sin.emitted },
-        { name: 'Anuladas', value: sin.annulled },
-        { name: 'Rechazadas', value: sin.rejected },
-      ]
-    : [];
-  const COLORS = ['#16a34a', '#dc2626', '#d97706'];
 
   return (
     <div>
@@ -161,28 +150,6 @@ export default function Reports() {
               ))}
             </tbody>
           </table>
-        </Card>
-      )}
-
-      {sin && (
-        <Card title={`Facturacion SIN (${sin.period})`}>
-          <div className="grid grid-2">
-            <div className="kpi"><div className="k-label">Emitidas</div><div className="k-value">{sin.emitted}</div></div>
-            <div className="kpi"><div className="k-label">Monto emitido</div><div className="k-value">{fmtMoney(sin.totalEmitted)}</div></div>
-            <div className="kpi"><div className="k-label">Anuladas</div><div className="k-value">{sin.annulled}</div></div>
-            <div className="kpi"><div className="k-label">Rechazadas</div><div className="k-value">{sin.rejected}</div></div>
-          </div>
-          <div className="chart-box">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
-                  {pieData.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
-                </Pie>
-                <Legend />
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
         </Card>
       )}
     </div>
