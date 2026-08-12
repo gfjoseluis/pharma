@@ -31,24 +31,40 @@ interface SaleRow {
 
 const METHOD_LABEL: Record<string, string> = { EFECTIVO: 'Efectivo', TARJETA: 'Tarjeta', QR: 'QR' };
 
+type Period = 'day' | 'week' | 'month';
+
+function periodFrom(p: Period): Date {
+  const now = new Date();
+  if (p === 'day') return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (p === 'week') return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+  return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+
 export default function Sales() {
   const [sales, setSales] = useState<SaleRow[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState<Period>('day');
   const [annulSale, setAnnulSale] = useState<SaleRow | null>(null);
   const [annulReason, setAnnulReason] = useState('');
   const [detail, setDetail] = useState<SaleRow | null>(null);
 
-  const load = () => {
+  const load = (p: Period = period) => {
+    setPeriod(p);
     setLoading(true);
+    const from = periodFrom(p);
+    const to = new Date(Date.now() + 86400000);
     api
-      .get('/sales/recent?limit=60')
+      .get('/sales', { params: { from: from.toISOString(), to: to.toISOString() } })
       .then((r) => setSales(r.data))
       .catch((e) => setError(errMsg(e)))
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, []);
+  useEffect(() => { load('day'); }, []);
+
+  const activeSales = sales.filter((s) => s.status === 'ACTIVE');
+  const periodTotal = activeSales.reduce((a, s) => a + Number(s.total), 0);
 
   const doAnnul = async () => {
     if (!annulSale) return;
@@ -69,11 +85,33 @@ export default function Sales() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2>Ventas recientes</h2>
-        <Button variant="secondary" onClick={load}>Actualizar</Button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <h2>Ventas</h2>
+        <Button variant="secondary" onClick={() => load()}>Actualizar</Button>
       </div>
       <Alert type="error">{error}</Alert>
+
+      <div className="tabs">
+        {([['day', 'Hoy'], ['week', '7 dias'], ['month', 'Este mes']] as [Period, string][]).map(([p, label]) => (
+          <button key={p} className={`tab ${period === p ? 'active' : ''}`} onClick={() => load(p)}>{label}</button>
+        ))}
+      </div>
+
+      <div className="kpi-row" style={{ marginBottom: 16 }}>
+        <div className="kpi">
+          <div className="k-label">Total ventas del periodo ({period === 'day' ? 'hoy' : period === 'week' ? 'ultimos 7 dias' : 'este mes'})</div>
+          <div className="k-value">{fmtMoney(periodTotal)}</div>
+        </div>
+        <div className="kpi">
+          <div className="k-label">Ventas activas</div>
+          <div className="k-value">{activeSales.length}</div>
+        </div>
+        <div className="kpi">
+          <div className="k-label">Ticket promedio</div>
+          <div className="k-value">{activeSales.length ? fmtMoney(periodTotal / activeSales.length) : fmtMoney(0)}</div>
+        </div>
+      </div>
+
       <Card>
         <Table head={['#', 'Fecha', 'Cliente', 'Metodo', 'Pago', 'Estado', 'Cajero', 'Total', 'Acciones']}>
           {sales.map((s) => (
@@ -99,7 +137,7 @@ export default function Sales() {
                 {s.status === 'ACTIVE' && (
                   <>
                     <Button variant="secondary" className="btn-sm" onClick={() => { setAnnulSale(s); setAnnulReason(''); }}>Anular</Button>{' '}
-                    <Button variant="danger" className="btn-sm" onClick={() => api.delete(`/sales/${s.id}`).then(load).catch((e) => setError(errMsg(e)))}>Desactivar</Button>
+                    <Button variant="danger" className="btn-sm" onClick={() => api.delete(`/sales/${s.id}`).then(() => load()).catch((e) => setError(errMsg(e)))}>Desactivar</Button>
                   </>
                 )}
               </td>

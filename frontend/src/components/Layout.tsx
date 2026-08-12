@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import ExpiryBell from './ExpiryBell';
+import LowStockBell from './LowStockBell';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: '📊', perm: 'dashboard.view' },
@@ -50,6 +51,7 @@ export default function Layout() {
           ))}
         </nav>
         <ExpiryBell />
+        <LowStockBell />
         <div className="sidebar-foot">
           <div className="user-chip">
             <div className="uc-name">{user?.fullName}</div>

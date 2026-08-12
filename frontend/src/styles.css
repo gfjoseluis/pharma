@@ -137,6 +137,18 @@ h3 { font-size: 15px; }
 .qr-box img { border: 1px solid var(--border); border-radius: 8px; padding: 6px; }
 .total-line { display: flex; justify-content: space-between; font-size: 18px; font-weight: 700; margin-top: 10px; }
 
+/* POS: botones grandes, resaltado por teclado, monto recibido / cambio */
+.pos-search input { font-size: 17px !important; padding: 13px !important; }
+.product-row.sel { background: #ccfbf1; border-left: 3px solid var(--primary); }
+.product-row.sel:hover { background: #ccfbf1; }
+.qty-control button { width: 32px; height: 32px; font-size: 17px; border-radius: 8px; border-width: 2px; }
+.qty-input { height: 33px !important; font-size: 15px !important; }
+.qty-control .qty-remove { width: 32px; height: 32px; background: #fee2e2; border-color: #fca5a5 !important; color: var(--danger); font-size: 14px; }
+.qty-control .qty-remove:hover { background: #fecaca; }
+.seg-big .seg-button { padding: 12px 20px; font-size: 15px; border-radius: 10px; }
+.btn-pay { padding: 14px 28px; font-size: 17px; border-radius: 12px; width: 100%; justify-content: center; }
+.change-box { background: #f0fdf4; border: 2px solid #86efac; color: #15803d; font-weight: 800; font-size: 24px; border-radius: 10px; padding: 10px 16px; min-width: 160px; }
+
 /* ================= Tabs ================= */
 .tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
 .tab { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border); background: #fff; cursor: pointer; font-weight: 600; font-size: 13px; }
@@ -206,9 +218,11 @@ html.app-compact { zoom: 0.8; }
   .pos-search input { font-size: 15px; padding: 10px; }
   .product-row { padding: 9px 12px; }
   .product-row .p-meta { font-size: 11px; }
-  .qty-control button { width: 25px; height: 25px; font-size: 14px; }
-  .qty-control .qty-input { width: 46px; height: 27px; font-size: 13px; }
-  .seg-button { padding: 6px 12px; font-size: 12px; }
+  .qty-control button { width: 30px; height: 30px; font-size: 16px; }
+  .qty-control .qty-input { width: 50px; height: 30px; font-size: 14px; }
+  .seg-button { padding: 8px 14px; font-size: 13px; }
+  .btn-pay { padding: 12px 22px; font-size: 15px; }
+  .change-box { font-size: 20px; padding: 8px 12px; }
   .total-line { font-size: 16px; }
 
   .tab { padding: 6px 14px; font-size: 12px; }

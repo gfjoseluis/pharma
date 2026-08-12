@@ -29,6 +29,7 @@ export async function salesReport(req: Request, res: Response, next: NextFunctio
       include: {
         items: { include: { product: { select: { costPrice: true } } } },
         branch: { select: { id: true, name: true } },
+        user: { select: { id: true, fullName: true } },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -61,6 +62,48 @@ export async function salesReport(req: Request, res: Response, next: NextFunctio
       byBranch.set(key, entry);
     }
 
+    // Ganancia por tipo de cobro (para cuadre de cajas)
+    const byMethod = new Map<string, { method: string; count: number; total: number; profit: number }>();
+    for (const s of sales) {
+      const key = s.paymentMethod || 'EFECTIVO';
+      const cost = s.items.reduce((a, i) => a + Number(i.quantity) * Number(i.product.costPrice || 0), 0);
+      const entry = byMethod.get(key) || { method: key, count: 0, total: 0, profit: 0 };
+      entry.count += 1;
+      entry.total += Number(s.total);
+      entry.profit += Number(s.total) - cost;
+      byMethod.set(key, entry);
+    }
+
+    // Cuadre de caja: por cajero y sucursal, detallado por metodo de cobro
+    const byUser = new Map<string, {
+      userId: number; fullName: string; branchName: string; count: number; total: number; profit: number;
+      methods: Record<string, { count: number; total: number; profit: number }>;
+    }>();
+    for (const s of sales) {
+      const key = `${s.userId}-${s.branchId}`;
+      const entry = byUser.get(key) || {
+        userId: s.user.id,
+        fullName: s.user.fullName,
+        branchName: s.branch.name,
+        count: 0,
+        total: 0,
+        profit: 0,
+        methods: {},
+      };
+      const method = s.paymentMethod || 'EFECTIVO';
+      const mk = entry.methods[method] || { count: 0, total: 0, profit: 0 };
+      const cost = s.items.reduce((a, i) => a + Number(i.quantity) * Number(i.product.costPrice || 0), 0);
+      const profit = Number(s.total) - cost;
+      entry.count += 1;
+      entry.total += Number(s.total);
+      entry.profit += profit;
+      mk.count += 1;
+      mk.total += Number(s.total);
+      mk.profit += profit;
+      entry.methods[method] = mk;
+      byUser.set(key, entry);
+    }
+
     res.json({
       range,
       from: start,
@@ -68,6 +111,15 @@ export async function salesReport(req: Request, res: Response, next: NextFunctio
       totals: { totalSales, totalProfit, totalCount },
       byDay: Array.from(byDay.values()),
       byBranch: Array.from(byBranch.values()),
+      byMethod: Array.from(byMethod.values()).map((m) => ({ ...m, total: Number(m.total), profit: Number(m.profit) })),
+      byUser: Array.from(byUser.values())
+        .map((u) => ({
+          ...u,
+          total: Number(u.total),
+          profit: Number(u.profit),
+          methods: Object.fromEntries(Object.entries(u.methods).map(([k, v]) => [k, { ...v, total: Number(v.total), profit: Number(v.profit) }])),
+        }))
+        .sort((a, b) => b.total - a.total),
     });
   } catch (err) { next(err); }
 }

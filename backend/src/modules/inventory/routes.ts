@@ -7,7 +7,7 @@ import {
   listForms, createForm, updateForm, deactivateForm,
   listSuppliers, createSupplier, updateSupplier, deactivateSupplier,
   listProducts, searchProducts, getProduct, createProduct, updateProduct, deactivateProduct,
-  productStock, expiringStock,
+  productStock, expiringStock, lowStockProducts,
 } from './controller';
 
 const router = Router();
@@ -56,5 +56,6 @@ router.delete('/products/:id', requirePermission('products.delete'), deactivateP
 
 // Lotes por vencer (campana de notificaciones)
 router.get('/expiring', requireAnyPermission('products.view', 'pos.view', 'branches.view', 'purchases.view'), expiringStock);
+  router.get('/low-stock', requireAnyPermission('products.view', 'branches.view', 'purchases.view', 'reports.view'), lowStockProducts);
 
 export default router;

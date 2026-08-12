@@ -14,6 +14,7 @@ import Labs from './pages/Labs';
 import Units from './pages/Units';
 import Forms from './pages/Forms';
 import Purchases from './pages/Purchases';
+import PurchasesNew from './pages/PurchasesNew';
 import Branches from './pages/Branches';
 import Reports from './pages/Reports';
 import Users from './pages/Users';
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="units" element={<Guarded module="inventory.refs.view"><Units /></Guarded>} />
         <Route path="forms" element={<Guarded module="forms.manage"><Forms /></Guarded>} />
         <Route path="purchases" element={<Guarded module="purchases.view"><Purchases /></Guarded>} />
+        <Route path="purchases/new" element={<Guarded module="purchases.create"><PurchasesNew /></Guarded>} />
         <Route path="branches" element={<Guarded module="branches.view"><Branches /></Guarded>} />
         <Route path="reports" element={<Guarded module="reports.view"><Reports /></Guarded>} />
         <Route path="users" element={<Guarded module="users.view"><Users /></Guarded>} />

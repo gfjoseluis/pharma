@@ -495,5 +495,42 @@ export async function expiringStock(req: Request, res: Response, next: NextFunct
   } catch (err) { next(err); }
 }
 
+/** Productos con stock total menor o igual al minimo (alerta de reposicion). */
+export async function lowStockProducts(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const stocks = await prisma.stock.findMany({
+      where: { quantity: { gt: 0 } },
+      include: {
+        product: { select: { id: true, name: true, sku: true, minStock: true, price: true } },
+        branch: { select: { id: true, name: true } },
+      },
+      orderBy: { productId: 'asc' },
+    });
+    const map = new Map<number, { id: number; name: string; sku: string; minStock: number; price: number; total: number; branches: Array<{ id: number; name: string; quantity: number }> }>();
+    for (const s of stocks) {
+      const key = s.productId;
+      const entry = map.get(key) || {
+        id: s.product.id,
+        name: s.product.name,
+        sku: s.product.sku,
+        minStock: s.product.minStock,
+        price: Number(s.product.price),
+        total: 0,
+        branches: [],
+      };
+      entry.total += s.quantity;
+      const b = entry.branches.find((x) => x.id === s.branch.id);
+      if (b) b.quantity += s.quantity;
+      else entry.branches.push({ id: s.branch.id, name: s.branch.name, quantity: s.quantity });
+      map.set(key, entry);
+    }
+    const low = Array.from(map.values())
+      .filter((e) => e.total <= e.minStock)
+      .sort((a, b) => a.total - b.total)
+      .slice(0, 100);
+    res.json(low);
+  } catch (err) { next(err); }
+}
+
 // Export para reutilizar en logs/reportes
 export { PRODUCT_INCLUDE };

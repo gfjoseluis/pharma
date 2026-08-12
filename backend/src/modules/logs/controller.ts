@@ -5,7 +5,7 @@ import { paths } from '../../config/env';
 import { logger } from '../../utils/logger';
 
 function isSafeName(name: string): boolean {
-  return /^app-\d{4}-\d{2}-\d{2}\.log$/.test(name) && !name.includes('..') && !path.isAbsolute(name);
+  return /^[a-zA-Z0-9_.-]+\.log$/.test(name) && !name.includes('..') && !path.isAbsolute(name);
 }
 
 /** Lista los archivos .log disponibles (rotacion diaria). */

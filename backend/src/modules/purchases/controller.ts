@@ -40,6 +40,21 @@ export async function list(req: Request, res: Response, next: NextFunction): Pro
   } catch (err) { next(err); }
 }
 
+/** Total de compras en un rango de fechas (por defecto el mes en curso). */
+export async function totals(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const now = new Date();
+    const from = req.query.from ? new Date(String(req.query.from)) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = req.query.to ? new Date(String(req.query.to)) : new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const agg = await prisma.purchase.aggregate({
+      where: { date: { gte: from, lt: to } },
+      _count: true,
+      _sum: { total: true },
+    });
+    res.json({ from, to, count: agg._count, total: Number(agg._sum.total || 0) });
+  } catch (err) { next(err); }
+}
+
 export async function get(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const id = parseInt(req.params.id, 10);
@@ -72,7 +87,6 @@ export async function create(req: Request, res: Response, next: NextFunction): P
       const q = parseInt(it.quantity, 10);
       const c = parseFloat(String(it.unitCost).replace(',', '.'));
       if (!q || q <= 0 || isNaN(c) || c < 0) throw new Error('Cantidad o costo invalido en un item');
-      if (!it.expiryDate) throw new Error('La fecha de vencimiento es obligatoria en todos los items');
       return acc + q * c;
     }, 0);
 

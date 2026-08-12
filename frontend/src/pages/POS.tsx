@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api, errMsg } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { Button, Card, Modal, Field, Input, Alert, fmtMoney, Badge } from '../components/ui';
+import { isValidMoney, moneyToNumber } from '../money';
 
 interface ProductHit {
   id: number;
@@ -61,6 +62,7 @@ export default function POS() {
   const { user, hasPerm } = useAuth();
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<ProductHit[]>([]);
+  const [active, setActive] = useState(0);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [clientQ, setClientQ] = useState('');
@@ -68,7 +70,10 @@ export default function POS() {
   const [clientModal, setClientModal] = useState(false);
   const [newClient, setNewClient] = useState({ name: '', ciNit: '', address: '', phone: '' });
   const [payMethod, setPayMethod] = useState<'EFECTIVO' | 'TARJETA' | 'QR'>('EFECTIVO');
+  const [received, setReceived] = useState('');
   const [saleResult, setSaleResult] = useState<SaleResult | null>(null);
+  const [lastChange, setLastChange] = useState(0);
+  const [lastReceived, setLastReceived] = useState(0);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -86,6 +91,7 @@ export default function POS() {
       setHits([]);
       return;
     }
+    setActive(0);
     try {
       const r = await api.get(`/inventory/products/search?q=${encodeURIComponent(text)}&branchId=${user?.branchId}`);
       setHits(r.data);
@@ -95,7 +101,7 @@ export default function POS() {
   };
 
   const addToCart = (p: ProductHit) => {
-    if (p.stockOwn < 1) return;
+    if (!p || p.stockOwn < 1) return;
     setCart((prev) => {
       const existing = prev.find((c) => c.productId === p.id);
       if (existing) {
@@ -117,6 +123,10 @@ export default function POS() {
     setQ('');
     setHits([]);
     searchRef.current?.focus();
+  };
+
+  const removeFromCart = (productId: number) => {
+    setCart((prev) => prev.filter((c) => c.productId !== productId));
   };
 
   const changeQty = (productId: number, delta: number) => {
@@ -141,6 +151,29 @@ export default function POS() {
   };
 
   const total = cart.reduce((a, c) => a + c.price * c.quantity, 0);
+  const cashMode = payMethod === 'EFECTIVO';
+  const receivedNum = moneyToNumber(received);
+  const change = cashMode ? receivedNum - total : 0;
+  const receivedOk = !cashMode || (isValidMoney(received) && receivedNum >= total);
+
+  const onSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActive((a) => Math.min(a + 1, hits.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActive((a) => Math.max(a - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (hits.length > 0) {
+        const idx = active >= 0 && active < hits.length ? active : 0;
+        addToCart(hits[idx]);
+      }
+    } else if (e.key === 'Escape') {
+      setHits([]);
+      setQ('');
+    }
+  };
 
   const openClientModal = () => {
     setNewClient({ name: '', ciNit: '', address: '', phone: '' });
@@ -161,9 +194,11 @@ export default function POS() {
   };
 
   const doSale = async () => {
-    if (!cart.length) return;
+    if (!cart.length || !receivedOk) return;
     setError('');
     setBusy(true);
+    setLastReceived(cashMode ? receivedNum : 0);
+    setLastChange(cashMode ? change : 0);
     try {
       let clientId: number | undefined = selectedClient?.id;
       if (!clientId && clientQ.trim()) {
@@ -183,6 +218,7 @@ export default function POS() {
       setCart([]);
       setSelectedClient(null);
       setClientQ('');
+      setReceived('');
       setSaleResult(result);
     } catch (err) {
       setError(errMsg(err));
@@ -200,20 +236,26 @@ export default function POS() {
       <h2 style={{ marginBottom: 16 }}>Punto de Venta — {user?.branch?.name || 'Sin sucursal'}</h2>
       <Alert type="error">{error}</Alert>
       <div className="pos-layout">
-        <Card title="Buscar producto (nombre, principio activo, forma o presentacion)">
+        <Card title="Buscar producto (Enter agrega el resaltado; flechas ↑ ↓ navegan)">
           <div className="pos-search">
             <input
               ref={searchRef}
               className="input"
-              placeholder="Ej: paracetamol, capsula, jarabe, ibuprofeno..."
+              placeholder="Ej: paracetamol, capsula, jarabe, ibuprofeno... (Enter para agregar)"
               value={q}
               onChange={(e) => doSearch(e.target.value)}
+              onKeyDown={onSearchKey}
             />
           </div>
           {hits.length > 0 && (
             <div className="product-results">
-              {hits.map((p) => (
-                <div key={p.id} className="product-row" onClick={() => p.stockOwn > 0 && addToCart(p)}>
+              {hits.map((p, i) => (
+                <div
+                  key={p.id}
+                  className={`product-row ${i === active ? 'sel' : ''}`}
+                  onMouseEnter={() => setActive(i)}
+                  onClick={() => p.stockOwn > 0 && addToCart(p)}
+                >
                   <div>
                     <div className="p-name">
                       {p.name}
@@ -241,7 +283,7 @@ export default function POS() {
                     )}
                   </div>
                   {p.stockOwn > 0 ? (
-                    <Button variant="success" onClick={() => addToCart(p)}>+</Button>
+                    <Button variant="success" onClick={() => addToCart(p)}>＋</Button>
                   ) : (
                     <span className="badge badge-gray">Sin stock aqui</span>
                   )}
@@ -252,7 +294,7 @@ export default function POS() {
           {q.length >= 2 && !hits.length && <div className="empty">Sin resultados para "{q}"</div>}
         </Card>
 
-        <Card title={`Carrito (${cart.length} items)`}>
+        <Card title={`Carrito (${cart.length} items)`} actions={cart.length > 0 ? <Button variant="danger" className="btn-sm" onClick={() => setCart([])}>Vaciar</Button> : undefined}>
           {cart.length === 0 && <div className="empty">Agregue productos buscando arriba</div>}
           {cart.map((c) => (
             <div key={c.productId} className="product-row">
@@ -274,6 +316,7 @@ export default function POS() {
                   onChange={(e) => setQty(c.productId, e.target.value)}
                 />
                 <button onClick={() => changeQty(c.productId, 1)}>+</button>
+                <button className="qty-remove" title="Quitar del carrito" onClick={() => removeFromCart(c.productId)}>✖</button>
               </div>
             </div>
           ))}
@@ -321,7 +364,7 @@ export default function POS() {
         <div className="form-row" style={{ alignItems: 'flex-end' }}>
           <div className="field">
             <span>Metodo de pago</span>
-            <div className="seg-buttons">
+            <div className="seg-buttons seg-big">
               {(['EFECTIVO', 'TARJETA', 'QR'] as const).map((m) => (
                 <button
                   key={m}
@@ -334,15 +377,43 @@ export default function POS() {
               ))}
             </div>
           </div>
+
+          {cashMode && (
+            <>
+              <div className="field">
+                <span>Monto recibido</span>
+                <input
+                  className="input"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={received}
+                  onChange={(e) => setReceived(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (receivedOk) doSale(); } }}
+                />
+                {received.length > 0 && !receivedOk && (
+                  <span className="p-meta" style={{ color: 'var(--danger)' }}>
+                    {isValidMoney(received) ? 'Monto recibido menor que el total' : 'Monto invalido (use punto o coma)'}
+                  </span>
+                )}
+              </div>
+              <div className="field">
+                <span>Cambio a devolver</span>
+                <div className="change-box">
+                  {fmtMoney(change > 0 ? change : 0)}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
           <Button
             variant="success"
-            disabled={busy || !cart.length || !canSale}
+            className="btn-pay"
+            disabled={busy || !cart.length || !canSale || !receivedOk}
             onClick={doSale}
           >
-            {busy ? 'Procesando...' : `Cobrar (${payMethod === 'EFECTIVO' ? 'efectivo' : payMethod === 'TARJETA' ? 'tarjeta' : 'QR'})`}
+            {busy ? 'Procesando...' : `💵 Cobrar ${fmtMoney(total)} (${payMethod === 'EFECTIVO' ? 'efectivo' : payMethod === 'TARJETA' ? 'tarjeta' : 'QR'})`}
           </Button>
           {!canSale && <span className="p-meta" style={{ alignSelf: 'center' }}>Sin permiso para cobrar: contacte al administrador.</span>}
         </div>
@@ -371,6 +442,12 @@ export default function POS() {
             <div style={{ fontSize: 40 }}>✅</div>
             <div style={{ fontSize: 18, fontWeight: 700, margin: '6px 0' }}>{saleResult.sale.number}</div>
             <div>Total cobrado: <b>{fmtMoney(saleResult.sale.total)}</b></div>
+            {saleResult.sale.paymentMethod === 'EFECTIVO' && (
+              <>
+                <div>Recibido: <b>{fmtMoney(lastReceived)}</b></div>
+                <div>Cambio: <b style={{ color: 'var(--success)' }}>{fmtMoney(lastChange)}</b></div>
+              </>
+            )}
             <Badge color="green">PAGADO EN {METHOD_LABEL[saleResult.sale.paymentMethod] || saleResult.sale.paymentMethod}</Badge>
           </div>
         )}
