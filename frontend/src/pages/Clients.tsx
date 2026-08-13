@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { api, errMsg } from '../api/client';
 import { Card, Table, Button, Modal, Field, Input, SearchBox, fmtDate, Spinner, Alert, Badge } from '../components/ui';
 
@@ -15,6 +16,7 @@ interface Client {
 const emptyForm = { name: '', ciNit: '', address: '', phone: '', email: '' };
 
 export default function Clients() {
+  const { hasPerm } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [q, setQ] = useState('');
   const [modal, setModal] = useState(false);
@@ -84,7 +86,7 @@ export default function Clients() {
         <h2>Clientes</h2>
         <div style={{ display: 'flex', gap: 10 }}>
           <SearchBox value={q} onChange={setQ} placeholder="Buscar por nombre o NIT/CI..." />
-          <Button onClick={openNew}>+ Nuevo cliente</Button>
+          {hasPerm('clients.create') && <Button onClick={openNew}>+ Nuevo cliente</Button>}
         </div>
       </div>
       <Alert type="error">{error}</Alert>
@@ -99,8 +101,8 @@ export default function Clients() {
               <td>{c.email || '-'}</td>
               <td>{fmtDate(c.createdAt)}</td>
               <td>
-                <Button variant="secondary" className="btn-sm" onClick={() => openEdit(c)}>Editar</Button>{' '}
-                <Button variant="danger" className="btn-sm" onClick={() => remove(c)}>Eliminar</Button>
+                {hasPerm('clients.edit') && <Button variant="secondary" className="btn-sm" onClick={() => openEdit(c)}>Editar</Button>}{' '}
+                {hasPerm('clients.delete') && <Button variant="danger" className="btn-sm" onClick={() => remove(c)}>Eliminar</Button>}
               </td>
             </tr>
           ))}

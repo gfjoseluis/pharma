@@ -2,5 +2,5 @@ import React from 'react';
 import SimpleCrudPage from './SimpleCrud';
 
 export default function Labs() {
-  return <SimpleCrudPage title="Laboratorios" endpoint="/inventory/laboratories" />;
+  return <SimpleCrudPage title="Laboratorios" endpoint="/inventory/laboratories" managePerm="inventory.refs.manage" />;
 }

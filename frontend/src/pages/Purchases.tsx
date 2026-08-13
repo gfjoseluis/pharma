@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, errMsg } from '../api/client';
 import { Card, Table, Button, Modal, Spinner, Alert, fmtMoney, fmtDate, Badge } from '../components/ui';
+import { useAuth } from '../context/AuthContext';
 
 interface Branch { id: number; name: string; }
 interface Supplier { id: number; name: string; ruc: string | null; }
@@ -36,6 +37,7 @@ interface Purchase {
 }
 
 export default function Purchases() {
+  const { hasPerm } = useAuth();
   const navigate = useNavigate();
   const [rows, setRows] = useState<Purchase[]>([]);
   const [detail, setDetail] = useState<Purchase | null>(null);
@@ -65,7 +67,7 @@ export default function Purchases() {
         <h2>Compras (registro centralizado)</h2>
         <div style={{ display: 'flex', gap: 8 }}>
           <Button variant="secondary" onClick={load}>Actualizar</Button>
-          <Button onClick={() => navigate('/purchases/new')}>+ Nueva compra (vista completa)</Button>
+          {hasPerm('purchases.create') && <Button onClick={() => navigate('/purchases/new')}>+ Nueva compra (vista completa)</Button>}
         </div>
       </div>
       <Alert type="error">{error}</Alert>
@@ -98,7 +100,7 @@ export default function Purchases() {
               <td><b>{fmtMoney(p.total)}</b></td>
               <td>
                 <Button variant="secondary" className="btn-sm" onClick={() => setDetail(p)}>Detalle</Button>{' '}
-                <Button variant="danger" className="btn-sm" onClick={() => remove(p)}>Eliminar</Button>
+                {hasPerm('purchases.delete') && <Button variant="danger" className="btn-sm" onClick={() => remove(p)}>Eliminar</Button>}
               </td>
             </tr>
           ))}

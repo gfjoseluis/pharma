@@ -347,7 +347,7 @@ export default function POS() {
                   <option key={c.id} value={`${c.name} (${c.ciNit})`} />
                 ))}
               </datalist>
-              <Button variant="secondary" onClick={openClientModal}>+ Nuevo</Button>
+              {hasPerm('clients.create') && <Button variant="secondary" onClick={openClientModal}>+ Nuevo</Button>}
             </div>
             {filteredClients.length > 0 && !selectedClient && (
               <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>

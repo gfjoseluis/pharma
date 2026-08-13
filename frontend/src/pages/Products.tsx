@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { api, errMsg } from '../api/client';
 import { Card, Table, Button, Modal, Field, Input, Select, SearchBox, Spinner, Alert, fmtMoney, Badge } from '../components/ui';
 import { isValidMoney, moneyToNumber } from '../money';
+import { useAuth } from '../context/AuthContext';
 
 interface Category { id: number; name: string; }
 interface Lab { id: number; name: string; }
@@ -55,6 +56,7 @@ const emptyForm = {
 };
 
 export default function Products() {
+  const { hasPerm } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [labs, setLabs] = useState<Lab[]>([]);
@@ -178,7 +180,7 @@ export default function Products() {
         <h2>Productos</h2>
         <div style={{ display: 'flex', gap: 10 }}>
           <SearchBox value={q} onChange={setQ} placeholder="Buscar por nombre, principio activo o forma..." />
-          <Button onClick={openNew}>+ Nuevo producto</Button>
+          {hasPerm('products.create') && <Button onClick={openNew}>+ Nuevo producto</Button>}
         </div>
       </div>
       <Alert type="error">{error}</Alert>
@@ -201,8 +203,8 @@ export default function Products() {
               <td>{totalStock(p)}</td>
               <td>{p.minStock}</td>
               <td>
-                <Button variant="secondary" className="btn-sm" onClick={() => openEdit(p)}>Editar</Button>{' '}
-                {p.active && <Button variant="danger" className="btn-sm" onClick={() => deactivate(p)}>Desactivar</Button>}
+                {hasPerm('products.edit') && <Button variant="secondary" className="btn-sm" onClick={() => openEdit(p)}>Editar</Button>}{' '}
+                {p.active && hasPerm('products.delete') && <Button variant="danger" className="btn-sm" onClick={() => deactivate(p)}>Desactivar</Button>}
               </td>
             </tr>
           ))}

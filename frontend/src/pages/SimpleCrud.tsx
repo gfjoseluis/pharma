@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { api, errMsg } from '../api/client';
 import { Card, Table, Button, Modal, Field, Input, Alert, Spinner } from '../components/ui';
+import { useAuth } from '../context/AuthContext';
 
 interface Row { id: number; name: string; active: boolean; }
 
 /** Pagina CRUD simple reutilizable (categorias, laboratorios, unidades). */
-export default function SimpleCrudPage({ title, endpoint, showShort }: { title: string; endpoint: string; showShort?: boolean }) {
+export default function SimpleCrudPage({ title, endpoint, showShort, managePerm }: { title: string; endpoint: string; showShort?: boolean; managePerm?: string }) {
+  const { hasPerm } = useAuth();
+  const canManage = !managePerm || hasPerm(managePerm);
   const [rows, setRows] = useState<Row[]>([]);
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
@@ -43,9 +46,10 @@ export default function SimpleCrudPage({ title, endpoint, showShort }: { title: 
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h2>{title}</h2>
-        <Button onClick={() => { setEditing(null); setName(''); setShortName(''); setError(''); setModal(true); }}>+ Nuevo</Button>
+        {canManage && <Button onClick={() => { setEditing(null); setName(''); setShortName(''); setError(''); setModal(true); }}>+ Nuevo</Button>}
       </div>
       <Alert type="error">{error}</Alert>
+      {!canManage && <div className="alert alert-info">Vista de solo lectura: necesita permiso de gestion para crear o modificar registros.</div>}
       <Card>
         <Table head={['Nombre', ...(showShort ? ['Abreviatura'] : []), 'Estado', 'Acciones']}>
           {rows.map((r) => (
@@ -54,8 +58,10 @@ export default function SimpleCrudPage({ title, endpoint, showShort }: { title: 
               {showShort && <td>{(r as Row & { shortName?: string }).shortName || '-'}</td>}
               <td>{r.active ? <span className="badge badge-green">Activo</span> : <span className="badge badge-gray">Inactivo</span>}</td>
               <td>
-                <Button variant="secondary" className="btn-sm" onClick={() => { setEditing(r); setName(r.name); setShortName((r as Row & { shortName?: string }).shortName || ''); setError(''); setModal(true); }}>Editar</Button>{' '}
-                {r.active && <Button variant="danger" className="btn-sm" onClick={() => deactivate(r)}>Desactivar</Button>}
+                {canManage && <>
+                  <Button variant="secondary" className="btn-sm" onClick={() => { setEditing(r); setName(r.name); setShortName((r as Row & { shortName?: string }).shortName || ''); setError(''); setModal(true); }}>Editar</Button>{' '}
+                  {r.active && <Button variant="danger" className="btn-sm" onClick={() => deactivate(r)}>Desactivar</Button>}
+                </>}
               </td>
             </tr>
           ))}

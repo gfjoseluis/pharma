@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api, errMsg } from '../api/client';
 import { Card, Table, Button, Badge, fmtMoney, fmtDate, Spinner, Alert, Modal, Field, Input } from '../components/ui';
+import { useAuth } from '../context/AuthContext';
 
 interface SaleRow {
   id: number;
@@ -41,6 +42,7 @@ function periodFrom(p: Period): Date {
 }
 
 export default function Sales() {
+  const { hasPerm } = useAuth();
   const [sales, setSales] = useState<SaleRow[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -136,8 +138,8 @@ export default function Sales() {
                 <Button variant="secondary" className="btn-sm" onClick={() => setDetail(s)}>Detalle</Button>{' '}
                 {s.status === 'ACTIVE' && (
                   <>
-                    <Button variant="secondary" className="btn-sm" onClick={() => { setAnnulSale(s); setAnnulReason(''); }}>Anular</Button>{' '}
-                    <Button variant="danger" className="btn-sm" onClick={() => api.delete(`/sales/${s.id}`).then(() => load()).catch((e) => setError(errMsg(e)))}>Desactivar</Button>
+                    {hasPerm('sales.annul') && <Button variant="secondary" className="btn-sm" onClick={() => { setAnnulSale(s); setAnnulReason(''); }}>Anular</Button>}{' '}
+                    {hasPerm('sales.delete') && <Button variant="danger" className="btn-sm" onClick={() => api.delete(`/sales/${s.id}`).then(() => load()).catch((e) => setError(errMsg(e)))}>Desactivar</Button>}
                   </>
                 )}
               </td>

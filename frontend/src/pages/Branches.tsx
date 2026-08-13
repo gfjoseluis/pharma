@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api, errMsg } from '../api/client';
 import { Card, Table, Button, Modal, Field, Input, Select, Spinner, Alert, fmtMoney, fmtDate, Badge, SearchBox } from '../components/ui';
+import { useAuth } from '../context/AuthContext';
 
 interface Branch { id: number; name: string; address: string | null; phone: string | null; type: string; active: boolean; }
 
@@ -28,6 +29,8 @@ interface Movement {
 type Tab = 'sucursales' | 'stock' | 'distribuir' | 'transferir' | 'movimientos';
 
 export default function Branches() {
+  const { hasPerm } = useAuth();
+  const canEdit = hasPerm('branches.edit');
   const [tab, setTab] = useState<Tab>('sucursales');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [stock, setStock] = useState<StockRow[]>([]);
@@ -127,7 +130,7 @@ export default function Branches() {
       <Alert type="error">{error}</Alert>
 
       {tab === 'sucursales' && (
-        <Card title="Sucursales" actions={<Button onClick={openNew}>+ Nueva sucursal</Button>}>
+        <Card title="Sucursales" actions={canEdit ? <Button onClick={openNew}>+ Nueva sucursal</Button> : undefined}>
           <Table head={['Nombre', 'Tipo', 'Direccion', 'Telefono', 'Estado', 'Acciones']}>
             {branches.map((b) => (
               <tr key={b.id}>
@@ -137,8 +140,10 @@ export default function Branches() {
                 <td>{b.phone || '-'}</td>
                 <td>{b.active ? <Badge color="green">Activa</Badge> : <Badge color="gray">Inactiva</Badge>}</td>
                 <td>
+                  {canEdit && <>
                   <Button variant="secondary" className="btn-sm" onClick={() => openEdit(b)}>Editar</Button>{' '}
                   {b.active && <Button variant="danger" className="btn-sm" onClick={() => deactivateBranch(b)}>Desactivar</Button>}
+                </>}
                 </td>
               </tr>
             ))}

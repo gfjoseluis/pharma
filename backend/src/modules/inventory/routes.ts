@@ -15,25 +15,27 @@ const router = Router();
 router.use(authRequired);
 
 // ---- Categorias ----
-router.get('/categories', requirePermission('inventory.refs.view'), listCategories);
+// Los GET tambien los usan los formularios de producto/compra (con products.view
+// o purchases.view se pueden leer, sin dar gestion)
+router.get('/categories', requireAnyPermission('inventory.refs.view', 'products.view', 'purchases.view'), listCategories);
 router.post('/categories', requirePermission('inventory.refs.manage'), createCategory);
 router.put('/categories/:id', requirePermission('inventory.refs.manage'), updateCategory);
 router.delete('/categories/:id', requirePermission('inventory.refs.manage'), deactivateCategory);
 
 // ---- Laboratorios ----
-router.get('/laboratories', requirePermission('inventory.refs.view'), listLaboratories);
+router.get('/laboratories', requireAnyPermission('inventory.refs.view', 'products.view', 'purchases.view'), listLaboratories);
 router.post('/laboratories', requirePermission('inventory.refs.manage'), createLaboratory);
 router.put('/laboratories/:id', requirePermission('inventory.refs.manage'), updateLaboratory);
 router.delete('/laboratories/:id', requirePermission('inventory.refs.manage'), deactivateLaboratory);
 
 // ---- Unidades de medida ----
-router.get('/units', requirePermission('inventory.refs.view'), listUnits);
+router.get('/units', requireAnyPermission('inventory.refs.view', 'products.view', 'purchases.view'), listUnits);
 router.post('/units', requirePermission('inventory.refs.manage'), createUnit);
 router.put('/units/:id', requirePermission('inventory.refs.manage'), updateUnit);
 router.delete('/units/:id', requirePermission('inventory.refs.manage'), deactivateUnit);
 
 // ---- Formas farmaceuticas ----
-router.get('/forms', requireAnyPermission('forms.manage', 'inventory.refs.view'), listForms);
+router.get('/forms', requireAnyPermission('forms.manage', 'inventory.refs.view', 'products.view', 'purchases.view'), listForms);
 router.post('/forms', requirePermission('forms.manage'), createForm);
 router.put('/forms/:id', requirePermission('forms.manage'), updateForm);
 router.delete('/forms/:id', requirePermission('forms.manage'), deactivateForm);

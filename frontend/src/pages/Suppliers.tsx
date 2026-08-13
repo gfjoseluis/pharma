@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, errMsg } from '../api/client';
 import { Card, Table, Button, Modal, Field, Input, SearchBox, Spinner, Alert } from '../components/ui';
+import { useAuth } from '../context/AuthContext';
 
 interface ProductBrief { id: number; name: string; sku: string; }
 
@@ -18,6 +19,8 @@ interface Supplier {
 const emptyForm = { name: '', ruc: '', phone: '', email: '', address: '', productIds: [] as number[] };
 
 export default function Suppliers() {
+  const { hasPerm } = useAuth();
+  const canManage = hasPerm('inventory.refs.manage');
   const [rows, setRows] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<ProductBrief[]>([]);
   const [q, setQ] = useState('');
@@ -74,7 +77,7 @@ export default function Suppliers() {
         <h2>Proveedores</h2>
         <div style={{ display: 'flex', gap: 10 }}>
           <SearchBox value={q} onChange={setQ} placeholder="Buscar proveedor..." />
-          <Button onClick={openNew}>+ Nuevo proveedor</Button>
+          {canManage && <Button onClick={openNew}>+ Nuevo proveedor</Button>}
         </div>
       </div>
       <Alert type="error">{error}</Alert>
@@ -89,8 +92,10 @@ export default function Suppliers() {
               <td>{s.address || '-'}</td>
               <td>{s.products.length ? s.products.map((p) => p.product.name).slice(0, 4).join(', ') + (s.products.length > 4 ? '...' : '') : '-'}</td>
               <td>
+                {canManage && <>
                 <Button variant="secondary" className="btn-sm" onClick={() => openEdit(s)}>Editar</Button>{' '}
                 {s.active && <Button variant="danger" className="btn-sm" onClick={async () => { if (window.confirm('¿Desactivar proveedor?')) { await api.delete(`/inventory/suppliers/${s.id}`); load(); } }}>Desactivar</Button>}
+              </>}
               </td>
             </tr>
           ))}

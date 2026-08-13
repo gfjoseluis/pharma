@@ -142,6 +142,11 @@ export default function Users() {
             <div className="alert alert-info" style={{ marginTop: 8 }}>
               La cuenta admin siempre tiene todos los permisos. Para el resto, marque las acciones puntuales.
             </div>
+            <div className="alert" style={{ background: '#fef3c7', color: '#92400e', marginTop: 8 }}>
+              ⚠️ Importante: los permisos se aplican en el <b>próximo inicio de sesión</b> del usuario. Si el usuario
+              ya estaba conectado, debe cerrar sesión y volver a entrar (su token actual conserva los permisos
+              antiguos por hasta 12 horas).
+            </div>
             <h4 style={{ margin: '12px 0 6px' }}>Permisos por accion</h4>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ color: 'var(--muted)', fontSize: 12 }}>{form.permissions.length} de {ALL_ACTIONS.length} habilitados</span>

@@ -14,11 +14,13 @@ interface Metrics {
 }
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, hasPerm } = useAuth();
+  const canReports = hasPerm('reports.view');
   const [data, setData] = useState<Metrics | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (!canReports) return;
     Promise.all([api.get('/reports/sales?range=weekly'), api.get('/reports/inventory')])
       .then(([salesRes, invRes]) => {
         const report = salesRes.data;
@@ -33,7 +35,23 @@ export default function Dashboard() {
         });
       })
       .catch((err) => setError(errMsg(err)));
-  }, []);
+  }, [canReports]);
+
+  if (!canReports) {
+    return (
+      <div>
+        <h2 style={{ marginBottom: 16 }}>Dashboard</h2>
+        <div className="card">
+          <div className="card-body">
+            <p>Bienvenido/a. Consulta los reportes y ventas desde el menu lateral.</p>
+            <div className="checkbox-row">
+              <b>Sucursal activa:</b> {user?.branch?.name || 'Sin asignar'} ({user?.branch?.type || '-'})
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (error) return <div className="alert alert-error">{error}</div>;
   if (!data) return <Spinner />;
