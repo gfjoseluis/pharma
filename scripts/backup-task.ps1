@@ -1,6 +1,6 @@
 # =============================================================
 #  Backup automatico diario de FarmaciaPOS (Windows Task Scheduler)
-#  - Hace dump de MySQL, lo comprime y lo sube a Google Drive.
+#  - Hace dump de MySQL y lo comprime en backend\backups (.sql.gz).
 #  - Escribe logs en backend\logs\backup-task-YYYY-MM-DD.log
 #  Instalacion (una vez):
 #    powershell -ExecutionPolicy Bypass -File scripts\backup-task.ps1 -Install
@@ -54,8 +54,6 @@ $dbPort = if ($envVars.DB_PORT) { $envVars.DB_PORT } else { "3306" }
 $dbUser = if ($envVars.DB_USER) { $envVars.DB_USER } else { "root" }
 $dbPassword = if ($envVars.DB_PASSWORD) { $envVars.DB_PASSWORD } else { "" }
 $dbName = if ($envVars.DB_NAME) { $envVars.DB_NAME } else { "farmacia" }
-$credFile = if ($envVars.GOOGLE_APPLICATION_CREDENTIALS) { Join-Path (Join-Path $ProjectRoot "backend") $envVars.GOOGLE_APPLICATION_CREDENTIALS } else { $envVars.GOOGLE_APPLICATION_CREDENTIALS }
-$folderId = if ($envVars.GOOGLE_DRIVE_FOLDER_ID) { $envVars.GOOGLE_DRIVE_FOLDER_ID } else { "" }
 
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $sqlFile = Join-Path $backupDir ("farmacia-{0}.sql" -f $stamp)
@@ -77,29 +75,6 @@ try {
   $gzip.Close(); $output.Close(); $input.Close()
   Remove-Item $sqlFile -Force
   Write-Log "Comprimido OK: $((Get-Item $gzFile).Length) bytes"
-
-  if ($credFile -and (Test-Path $credFile)) {
-    Write-Log "Subiendo a Google Drive..."
-    # Reutiliza el backend: endpoint de backup (debe estar corriendo el servidor) o Node directo
-    $backendDir = Join-Path $ProjectRoot "backend"
-    & node -e "
-      const { google } = require('googleapis');
-      const fs = require('fs');
-      const path = require('path');
-      (async () => {
-        const auth = new google.auth.GoogleAuth({ keyFile: process.argv[1], scopes: ['https://www.googleapis.com/auth/drive.file'] });
-        const drive = google.drive({ version: 'v3', auth });
-        const file = process.argv[2];
-        const folder = process.argv[3];
-        const res = await drive.files.create({ requestBody: { name: path.basename(file), parents: folder ? [folder] : undefined }, media: { body: fs.createReadStream(file) }, fields: 'id,name' });
-        console.log('DRIVE_FILE_ID:' + res.data.id);
-      })().catch(e => { console.error(e.message); process.exit(1); });
-    " $credFile $gzFile $folderId
-    if ($LASTEXITCODE -ne 0) { throw "Fallo la subida a Google Drive" }
-    Write-Log "Subido a Google Drive OK"
-  } else {
-    Write-Log "Google Drive no configurado (GOOGLE_APPLICATION_CREDENTIALS). Solo backup local."
-  }
 
   Write-Log "Backup completado con exito."
 } catch {

@@ -28,8 +28,11 @@ export default function Login() {
   return (
     <div className="auth-wrap">
       <form className="auth-card" onSubmit={submit}>
-        <div className="auth-title">💊 FarmaciaPOS</div>
-        <div className="auth-sub">Sistema modular de gestion de farmacias</div>
+        <div className="auth-brand">
+          <span className="auth-mark">Rx</span>
+          <span className="auth-title">FarmaciaPOS</span>
+        </div>
+        <div className="auth-sub">Control de mostrador, stock y caja de su farmacia</div>
         {error && <div className="alert alert-error">{error}</div>}
         <div className="field">
           <span>Usuario</span>
@@ -43,9 +46,7 @@ export default function Login() {
           {busy ? 'Ingresando...' : 'Ingresar'}
         </button>
         <div className="demo-box">
-          <b>Usuarios de prueba:</b><br />
-          admin / admin123 — acceso completo<br />
-          cajero / cajero123 — solo ventas
+          Cuentas de prueba: admin / admin123 (acceso completo), cajero / cajero123 (solo ventas)
         </div>
       </form>
     </div>

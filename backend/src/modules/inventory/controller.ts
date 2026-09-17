@@ -178,10 +178,16 @@ export async function searchProducts(req: Request, res: Response, next: NextFunc
       take: 25,
     });
     // Stock en otras sucursales se muestra como consulta, la venta solo usa la propia.
+    // El stock vencido no se vende: se informa aparte para que el POS lo muestre bloqueado.
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
     const result = products.map((p) => {
       const stocks = p.stocks.filter((s) => s.quantity > 0);
-      const own = branchId ? stocks.filter((s) => s.branchId === branchId).reduce((a, s) => a + s.quantity, 0) : 0;
-      const other = branchId ? stocks.filter((s) => s.branchId !== branchId) : stocks;
+      const sellable = stocks.filter((s) => !s.expiryDate || new Date(s.expiryDate) >= todayStart);
+      const expired = stocks.filter((s) => s.expiryDate && new Date(s.expiryDate) < todayStart);
+      const own = branchId ? sellable.filter((s) => s.branchId === branchId).reduce((a, s) => a + s.quantity, 0) : 0;
+      const expiredOwn = branchId ? expired.filter((s) => s.branchId === branchId).reduce((a, s) => a + s.quantity, 0) : 0;
+      const other = branchId ? sellable.filter((s) => s.branchId !== branchId) : sellable;
       const otherTotal = other.reduce((a, s) => a + s.quantity, 0);
       // Sucursales (distintas a la propia) donde hay stock disponible
       const branchMap = new Map<number, { id: number; name: string; quantity: number }>();
@@ -204,6 +210,7 @@ export async function searchProducts(req: Request, res: Response, next: NextFunc
         lab: p.laboratory ? { id: p.laboratory.id, name: p.laboratory.name } : null,
         unit: p.unitMeasure?.shortName || p.unitMeasure?.name || null,
         stockOwn: own,
+        expiredOwn,
         stockOther: otherTotal,
         branches: Array.from(branchMap.values()),
       };
@@ -495,9 +502,11 @@ export async function expiringStock(req: Request, res: Response, next: NextFunct
   } catch (err) { next(err); }
 }
 
-/** Productos con stock total menor o igual al minimo (alerta de reposicion). */
+/** Productos con stock vendible (no vencido) menor o igual al minimo (alerta de reposicion). */
 export async function lowStockProducts(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
     const stocks = await prisma.stock.findMany({
       where: { quantity: { gt: 0 } },
       include: {
@@ -506,7 +515,7 @@ export async function lowStockProducts(req: Request, res: Response, next: NextFu
       },
       orderBy: { productId: 'asc' },
     });
-    const map = new Map<number, { id: number; name: string; sku: string; minStock: number; price: number; total: number; branches: Array<{ id: number; name: string; quantity: number }> }>();
+    const map = new Map<number, { id: number; name: string; sku: string; minStock: number; price: number; total: number; expiredQty: number; branches: Array<{ id: number; name: string; quantity: number }> }>();
     for (const s of stocks) {
       const key = s.productId;
       const entry = map.get(key) || {
@@ -516,19 +525,35 @@ export async function lowStockProducts(req: Request, res: Response, next: NextFu
         minStock: s.product.minStock,
         price: Number(s.product.price),
         total: 0,
+        expiredQty: 0,
         branches: [],
       };
-      entry.total += s.quantity;
-      const b = entry.branches.find((x) => x.id === s.branch.id);
-      if (b) b.quantity += s.quantity;
-      else entry.branches.push({ id: s.branch.id, name: s.branch.name, quantity: s.quantity });
+      const expired = s.expiryDate ? new Date(s.expiryDate) < todayStart : false;
+      if (expired) {
+        entry.expiredQty += s.quantity;
+      } else {
+        entry.total += s.quantity;
+        const b = entry.branches.find((x) => x.id === s.branch.id);
+        if (b) b.quantity += s.quantity;
+        else entry.branches.push({ id: s.branch.id, name: s.branch.name, quantity: s.quantity });
+      }
       map.set(key, entry);
     }
     const low = Array.from(map.values())
       .filter((e) => e.total <= e.minStock)
       .sort((a, b) => a.total - b.total)
       .slice(0, 100);
-    res.json(low);
+    // Productos sin ninguna fila de stock tambien necesitan reposicion.
+    const stockedIds = Array.from(map.keys());
+    const empty = await prisma.product.findMany({
+      where: { active: true, minStock: { gt: 0 }, id: { notIn: stockedIds } },
+      select: { id: true, name: true, sku: true, minStock: true, price: true },
+    });
+    for (const p of empty) {
+      low.push({ id: p.id, name: p.name, sku: p.sku, minStock: p.minStock, price: Number(p.price), total: 0, expiredQty: 0, branches: [] });
+    }
+    low.sort((a, b) => a.total - b.total);
+    res.json(low.slice(0, 100));
   } catch (err) { next(err); }
 }
 

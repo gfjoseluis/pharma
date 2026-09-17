@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api, errMsg } from '../api/client';
 import { Card, Spinner, fmtMoney } from '../components/ui';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { useAuth } from '../context/AuthContext';
 
 interface Metrics {
@@ -57,6 +57,7 @@ export default function Dashboard() {
   if (!data) return <Spinner />;
 
   const cards = [
+    { label: 'Sucursal activa', value: user?.branch?.name || 'Sin asignar', sub: `Tipo: ${user?.branch?.type || '-'}` },
     { label: 'Ventas del dia', value: fmtMoney(data.salesToday), sub: 'Total vendido hoy' },
     { label: 'Ganancias (semana)', value: fmtMoney(data.profitToday), sub: 'Utilidad estimada' },
     { label: 'Stock bajo', value: data.lowStock, sub: 'Productos bajo minimo' },
@@ -77,26 +78,26 @@ export default function Dashboard() {
         ))}
       </div>
       <div style={{ marginTop: 20 }}>
-        <Card title="Ventas de los ultimos 7 dias (Bs)">
+        <Card title="Ventas de los últimos 7 días">
+          <p className="p-meta" style={{ marginBottom: 8 }}>
+            Total cobrado cada día, en bolivianos. La última barra es hoy.
+          </p>
           <div className="chart-box">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.byDay}>
+              <BarChart data={data.byDay} margin={{ top: 8, right: 12, bottom: 22, left: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Bar dataKey="total" name="Ventas Bs" fill="#0d9488" radius={[6, 6, 0, 0]} />
+                <XAxis dataKey="date" tick={{ fontSize: 12 }} label={{ value: 'Fecha', position: 'insideBottom', offset: -14, fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} label={{ value: 'Ventas (Bs)', angle: -90, position: 'insideLeft', fontSize: 12 }} />
+                <Tooltip
+                  labelFormatter={(d: any) => `Fecha: ${d}`}
+                  formatter={(v: any) => [`${Number(v).toFixed(2)} Bs`, 'Ventas del día']}
+                />
+                <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="total" name="Ventas del día (Bs)" fill="#186a48" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </Card>
-      </div>
-      <div className="card">
-        <div className="card-body">
-          <div className="checkbox-row">
-            <b>Sucursal activa:</b> {user?.branch?.name || 'Sin asignar'} ({user?.branch?.type || '-'})
-          </div>
-        </div>
       </div>
     </div>
   );

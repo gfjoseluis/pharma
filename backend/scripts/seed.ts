@@ -27,7 +27,10 @@ async function main(): Promise<void> {
       branchId: mainBranch.id,
       permissions: ALL_PERMISSIONS,
     },
-    update: {},
+    update: {
+      branchId: mainBranch.id,
+      permissions: ALL_PERMISSIONS,
+    },
   });
   await prisma.user.upsert({
     where: { username: 'cajero' },
@@ -39,12 +42,22 @@ async function main(): Promise<void> {
       branchId: mainBranch.id,
       permissions: [
         'dashboard.view', 'pos.view', 'pos.sale',
+        'cash.view', 'cash.open', 'cash.close',
         'sales.view', 'sales.annul',
         'clients.view', 'clients.create',
         'products.view',
       ],
     },
-    update: {},
+    update: {
+      branchId: mainBranch.id,
+      permissions: [
+        'dashboard.view', 'pos.view', 'pos.sale',
+        'cash.view', 'cash.open', 'cash.close',
+        'sales.view', 'sales.annul',
+        'clients.view', 'clients.create',
+        'products.view',
+      ],
+    },
   });
   console.log('[OK] Usuarios de prueba: admin/admin123 y cajero/cajero123');
 
@@ -162,6 +175,30 @@ async function main(): Promise<void> {
     },
   ];
 
+  // Escenarios de prueba por SKU: lotes validos, vencidos, bajos y por vencer.
+  const now = Date.now();
+  const day = 86400000;
+  const stockPlan: Record<string, Array<{ lot: string; qty: number; expDays: number | null }>> = {
+    'PAR-INT-500-0001': [{ lot: 'LOT-PAR-500-A', qty: 8, expDays: 200 }], // bajo stock (min 20)
+    'PAR-INT-1000-0001': [{ lot: 'LOT-PAR-1000-A', qty: 100, expDays: 180 }],
+    'PAR-INT-100-0001': [{ lot: 'LOT-PAR-JAR-A', qty: 0, expDays: 180 }], // sin stock
+    'IBU-INT-400-0001': [{ lot: 'LOT-IBU-400-A', qty: 30, expDays: 20 }], // por vencer
+    'AMO-INT-500-0001': [
+      { lot: 'LOT-AMO-500-OK', qty: 100, expDays: 300 },
+      { lot: 'LOT-AMO-500-VENC', qty: 100, expDays: -30 }, // 100 vencidas bloqueadas
+    ],
+    'AMO-INT-500-0002': [
+      { lot: 'LOT-AMX-500-A', qty: 50, expDays: 240 },
+      { lot: 'LOT-AMX-500-B', qty: 12, expDays: 10 }, // por vencer
+    ],
+    'MIG-INT-0001': [{ lot: 'LOT-MIG-A', qty: 40, expDays: 180 }],
+    'VIT-BAG-1000-0001': [{ lot: 'LOT-VIT-A', qty: 5, expDays: 365 }], // bajo stock (min 8)
+    'JAR-INT-120-0001': [
+      { lot: 'LOT-JAR-A', qty: 3, expDays: 300 }, // bajo stock (min 6)
+      { lot: 'LOT-JAR-VENC', qty: 20, expDays: -60 }, // vencidas bloqueadas
+    ],
+  };
+
   for (const p of productsData) {
     const product = await prisma.product.upsert({
       where: { sku: p.sku },
@@ -192,19 +229,43 @@ async function main(): Promise<void> {
         minStock: p.min,
       },
     });
-    const lot = `LOT-${p.sku}`;
-    await prisma.stock.upsert({
-      where: { branchId_productId_lot: { branchId: mainBranch.id, productId: product.id, lot } },
-      create: { branchId: mainBranch.id, productId: product.id, lot, quantity: 100, expiryDate: new Date(Date.now() + 180 * 86400000) },
-      update: { quantity: 100 },
-    });
+    const lots = stockPlan[p.sku] || [{ lot: `LOT-${p.sku}`, qty: 100, expDays: 180 }];
+    for (const l of lots) {
+      await prisma.stock.upsert({
+        where: { branchId_productId_lot: { branchId: mainBranch.id, productId: product.id, lot: l.lot } },
+        create: {
+          branchId: mainBranch.id,
+          productId: product.id,
+          lot: l.lot,
+          quantity: l.qty,
+          expiryDate: l.expDays === null ? null : new Date(now + l.expDays * day),
+        },
+        update: {
+          quantity: l.qty,
+          expiryDate: l.expDays === null ? null : new Date(now + l.expDays * day),
+        },
+      });
+    }
   }
-  console.log('[OK] Productos de ejemplo con stock (100 uds c/u):');
+  console.log('[OK] Productos de ejemplo con escenarios de stock (vencidos, bajos, por vencer):');
   for (const p of productsData) {
     const formName = (p.formId === fComprimido.id ? 'Comprimido' : p.formId === fJarabe.id ? 'Jarabe' : p.formId === fCapsula.id ? 'Capsula' : 'Efervescente');
     const labName = p.labId === labSAE.id ? 'SAE' : p.labId === labInti.id ? 'Inti' : 'Bago';
     console.log(`       ${p.name} -> ${p.ingredients.map((i) => i.ingredient).join(' + ')} -> ${formName} -> ${labName}${p.restrictedUse ? ' [USO RESTRINGIDO]' : ''}`);
   }
+
+  // Clientes de prueba (para ventas con NIT/CI en el POS)
+  await prisma.client.upsert({
+    where: { ciNit: '1234567' },
+    create: { name: 'Juan Perez', ciNit: '1234567', phone: '70011122' },
+    update: {},
+  });
+  await prisma.client.upsert({
+    where: { ciNit: '7654321-1B' },
+    create: { name: 'Farmacia Vecina SRL', ciNit: '7654321-1B', phone: '70033344' },
+    update: {},
+  });
+  console.log('[OK] Clientes de prueba (Juan Perez, Farmacia Vecina SRL)');
 
   // Licencias por defecto (activadas con codigos demo para uso inmediato)
   const demoLicenses: Record<string, string> = {

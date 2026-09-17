@@ -20,6 +20,11 @@ export async function create(req: Request, res: Response, next: NextFunction): P
       res.status(400).json({ error: 'El usuario no tiene sucursal asignada' });
       return;
     }
+    const cashOpen = await prisma.cashSession.findFirst({ where: { userId: user.id, status: 'OPEN' } });
+    if (!cashOpen) {
+      res.status(400).json({ error: 'Debe aperturar su caja antes de vender' });
+      return;
+    }
     if (!Array.isArray(items) || items.length === 0) {
       res.status(400).json({ error: 'La venta debe incluir al menos un producto' });
       return;
@@ -41,6 +46,9 @@ export async function create(req: Request, res: Response, next: NextFunction): P
     }
 
     const number = await getNextSaleNumber();
+    // Los lotes vencidos NO se pueden vender (ni siquiera si no hay otro stock).
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
     const sale = await prisma.$transaction(async (tx) => {
       const itemsWithPrices: Array<{ productId: number; quantity: number; price: number; subtotal: number; name: string; sku: string }> = [];
       for (const it of items) {
@@ -49,14 +57,32 @@ export async function create(req: Request, res: Response, next: NextFunction): P
         const qty = parseInt(it.quantity, 10);
         if (!qty || qty <= 0) throw new Error(`Cantidad invalida para ${product.name}`);
         const price = it.price !== undefined ? parseFloat(it.price) : Number(product.price);
-        // Solo se vende stock de la sucursal propia
+        // Solo se vende stock no vencido de la sucursal propia (FEFO: vence primero, sale primero)
         const ownStocks = await tx.stock.findMany({
-          where: { branchId: user.branchId!, productId: product.id, quantity: { gt: 0 } },
+          where: {
+            branchId: user.branchId!,
+            productId: product.id,
+            quantity: { gt: 0 },
+            OR: [{ expiryDate: null }, { expiryDate: { gte: todayStart } }],
+          },
           orderBy: [{ expiryDate: 'asc' }, { lot: 'asc' }],
         });
         const available = ownStocks.reduce((a, s) => a + s.quantity, 0);
         if (available < qty) {
-          throw new Error(`Stock insuficiente de ${product.name} en su sucursal (disponible: ${available})`);
+          const expired = await tx.stock.aggregate({
+            where: {
+              branchId: user.branchId!,
+              productId: product.id,
+              quantity: { gt: 0 },
+              expiryDate: { lt: todayStart },
+            },
+            _sum: { quantity: true },
+          });
+          const expiredQty = expired._sum.quantity || 0;
+          throw new Error(
+            `Stock disponible no vencido de ${product.name} insuficiente en su sucursal (disponible: ${available}, solicitado: ${qty})` +
+            (expiredQty > 0 ? `. Hay ${expiredQty} unidades vencidas bloqueadas para la venta.` : '')
+          );
         }
         let remaining = qty;
         for (const st of ownStocks) {
@@ -200,28 +226,62 @@ export async function annul(req: Request, res: Response, next: NextFunction): Pr
     if (sale.status !== 'ACTIVE') { res.status(400).json({ error: 'La venta ya no esta activa' }); return; }
 
     const result = await prisma.$transaction(async (tx) => {
-      // Devolver stock
-      for (const it of sale.items) {
-        const lots = await tx.stock.findMany({
-          where: { branchId: sale.branchId, productId: it.productId },
-          orderBy: { lot: 'asc' },
-        });
-        let remaining = it.quantity;
-        for (const st of lots) {
-          if (remaining <= 0) break;
-          await tx.stock.update({ where: { id: st.id }, data: { quantity: st.quantity + remaining } });
-          remaining = 0;
+      // Devolver stock a los mismos lotes de donde salio (movimientos SALE de esta venta).
+      // Asi los lotes vencidos no se "blanquean" como validos al anular.
+      const takes = await tx.stockMovement.findMany({
+        where: { type: 'SALE', note: `Venta ${sale.number}` },
+        select: { productId: true, branchId: true, quantity: true, lot: true },
+      });
+      if (takes.length > 0) {
+        for (const t of takes) {
+          const back = -t.quantity;
+          if (back <= 0) continue;
+          const row = await tx.stock.findFirst({
+            where: { branchId: t.branchId, productId: t.productId, lot: t.lot },
+          });
+          if (row) {
+            await tx.stock.update({ where: { id: row.id }, data: { quantity: row.quantity + back } });
+          } else {
+            await tx.stock.create({
+              data: { branchId: t.branchId, productId: t.productId, lot: t.lot, quantity: back },
+            });
+          }
+          await tx.stockMovement.create({
+            data: {
+              type: 'ADJUSTMENT',
+              productId: t.productId,
+              branchId: t.branchId,
+              quantity: back,
+              lot: t.lot,
+              userId: req.user!.id,
+              note: `Anulacion de venta ${sale.number}`,
+            },
+          });
         }
-        await tx.stockMovement.create({
-          data: {
-            type: 'ADJUSTMENT',
-            productId: it.productId,
-            branchId: sale.branchId,
-            quantity: it.quantity,
-            userId: req.user!.id,
-            note: `Anulacion de venta ${sale.number}`,
-          },
-        });
+      } else {
+        // Compatibilidad: ventas viejas sin movimientos con lote.
+        for (const it of sale.items) {
+          const lots = await tx.stock.findMany({
+            where: { branchId: sale.branchId, productId: it.productId },
+            orderBy: { lot: 'asc' },
+          });
+          let remaining = it.quantity;
+          for (const st of lots) {
+            if (remaining <= 0) break;
+            await tx.stock.update({ where: { id: st.id }, data: { quantity: st.quantity + remaining } });
+            remaining = 0;
+          }
+          await tx.stockMovement.create({
+            data: {
+              type: 'ADJUSTMENT',
+              productId: it.productId,
+              branchId: sale.branchId,
+              quantity: it.quantity,
+              userId: req.user!.id,
+              note: `Anulacion de venta ${sale.number}`,
+            },
+          });
+        }
       }
       await tx.sale.update({ where: { id }, data: { status: 'ANNULLED' } });
       return sale;

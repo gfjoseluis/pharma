@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import POS from './pages/POS';
+import Cash from './pages/Cash';
 import Sales from './pages/Sales';
 import Clients from './pages/Clients';
 import Products from './pages/Products';
@@ -48,6 +49,7 @@ export default function App() {
       >
         <Route index element={<Dashboard />} />
         <Route path="pos" element={<Guarded module="pos.view"><POS /></Guarded>} />
+        <Route path="cash" element={<Guarded module="cash.view"><Cash /></Guarded>} />
         <Route path="sales" element={<Guarded module="sales.view"><Sales /></Guarded>} />
         <Route path="clients" element={<Guarded module="clients.view"><Clients /></Guarded>} />
         <Route path="products" element={<Guarded module="products.view"><Products /></Guarded>} />

@@ -34,45 +34,6 @@ export async function dumpDatabase(): Promise<{ file: string; size: number }> {
   return { file: rawFile, size: stats.size };
 }
 
-export interface DriveService {
-  ready: boolean;
-  upload(file: string): Promise<{ driveFileId: string; driveFileName: string }>;
-}
-
-/** Servicio de Google Drive basado en service account. */
-export function createDriveService(): DriveService {
-  const credentialsPath = env.googleCredentials;
-  if (!credentialsPath || !fs.existsSync(credentialsPath)) {
-    return {
-      ready: false,
-      async upload() {
-        throw new Error('Credenciales de Google Drive no configuradas (GOOGLE_APPLICATION_CREDENTIALS). Configurelas en backend/.env');
-      },
-    };
-  }
-  return {
-    ready: true,
-    async upload(file: string) {
-      const { google } = await import('googleapis');
-      const auth = new google.auth.GoogleAuth({
-        keyFile: credentialsPath,
-        scopes: ['https://www.googleapis.com/auth/drive.file'],
-      });
-      const drive = google.drive({ version: 'v3', auth });
-      const fileName = path.basename(file);
-      const res = await drive.files.create({
-        requestBody: {
-          name: fileName,
-          parents: env.googleDriveFolderId ? [env.googleDriveFolderId] : undefined,
-        },
-        media: { body: fs.createReadStream(file) },
-        fields: 'id,name',
-      });
-      return { driveFileId: String(res.data.id), driveFileName: String(res.data.name) };
-    },
-  };
-}
-
 /** Estado de la tarea programada en Windows (schtasks). */
 export async function taskSchedulerStatus(): Promise<{ name: string; status: string; lastRun: string | null; nextRun: string | null }> {
   try {

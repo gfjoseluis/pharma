@@ -21,6 +21,7 @@ model Branch {
   purchases Purchase[]
   sales     Sale[]
   movements StockMovement[]
+  cashSessions CashSession[]
 }
 
 // ============================= USUARIOS =============================
@@ -34,9 +35,10 @@ model User {
   branch      Branch?  @relation(fields: [branchId], references: [id])
   permissions Json     @default("[]") // lista de modulos habilitados
   active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
   sales       Sale[]
   movements   StockMovement[]
+  cashSessions CashSession[]
 }
 
 // ============================= INVENTARIO =============================
@@ -155,7 +157,7 @@ model Stock {
 
 model StockMovement {
   id             Int      @id @default(autoincrement())
-  type           String // PURCHASE | DISTRIBUTION | TRANSFER_OUT | TRANSFER_IN | SALE | SIN_DISCHARGE | ADJUSTMENT
+  type           String // PURCHASE | DISTRIBUTION | TRANSFER_OUT | TRANSFER_IN | SALE | ADJUSTMENT
   productId      Int
   product        Product  @relation(fields: [productId], references: [id])
   branchId       Int
@@ -239,10 +241,24 @@ model SaleItem {
   subtotal  Decimal @db.Decimal(10, 2)
 }
 
-// ============================= FACTURACION =============================
-// El modulo de facturacion electronica (SIN) fue eliminado por requerimiento.
-// Las ventas son simples (efectivo); la referencia de factura del proveedor
-// se guarda en Purchase.invoiceNumber.
+// ============================= CAJA =============================
+// Sesion de caja por cajero: apertura con monto inicial, cierre con
+// conteo de efectivo. Sin caja abierta el cajero no puede vender.
+model CashSession {
+  id            Int       @id @default(autoincrement())
+  branchId      Int
+  branch        Branch    @relation(fields: [branchId], references: [id])
+  userId        Int
+  user          User      @relation(fields: [userId], references: [id])
+  openedAt      DateTime  @default(now())
+  openingAmount Decimal   @db.Decimal(10, 2)
+  status        String    @default("OPEN") // OPEN | CLOSED
+  closedAt      DateTime?
+  countedCash   Decimal?  @db.Decimal(10, 2) // efectivo contado al cierre
+  expectedCash  Decimal?  @db.Decimal(10, 2) // inicial + ventas en efectivo
+  difference    Decimal?  @db.Decimal(10, 2) // contado - esperado (sobrante/faltante)
+  note          String?
+}
 
 // ============================= LICENCIAS =============================
 model License {

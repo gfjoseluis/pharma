@@ -154,7 +154,10 @@ export async function inventoryReport(req: Request, res: Response, next: NextFun
     }
     const bestSellers = Array.from(topMap.values()).sort((a, b) => b.qty - a.qty).slice(0, 20);
 
-    // Stock bajo
+    // Stock bajo: solo cuenta lo vendible (no vencido). Lo vencido se informa
+    // aparte como "por dar de baja" porque no sirve para reponer.
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
     const stocks = await prisma.stock.findMany({
       where: { quantity: { gt: 0 } },
       include: {
@@ -162,7 +165,7 @@ export async function inventoryReport(req: Request, res: Response, next: NextFun
         branch: { select: { id: true, name: true } },
       },
     });
-    const stockMap = new Map<number, { product: { id: number; name: string; sku: string; minStock: number; form: string | null; unit: string | null }; total: number; branches: string[] }>();
+    const stockMap = new Map<number, { product: { id: number; name: string; sku: string; minStock: number; form: string | null; unit: string | null }; total: number; expiredQty: number; branches: string[] }>();
     for (const s of stocks) {
       const key = s.productId;
       const entry = stockMap.get(key) || {
@@ -175,10 +178,16 @@ export async function inventoryReport(req: Request, res: Response, next: NextFun
           unit: s.product.unitMeasure?.shortName || null,
         },
         total: 0,
+        expiredQty: 0,
         branches: [],
       };
-      entry.total += s.quantity;
-      if (!entry.branches.includes(s.branch.name)) entry.branches.push(s.branch.name);
+      const expired = s.expiryDate ? new Date(s.expiryDate) < todayStart : false;
+      if (expired) {
+        entry.expiredQty += s.quantity;
+      } else {
+        entry.total += s.quantity;
+        if (!entry.branches.includes(s.branch.name)) entry.branches.push(s.branch.name);
+      }
       stockMap.set(key, entry);
     }
     const lowStock = Array.from(stockMap.values())
@@ -207,17 +216,6 @@ export async function inventoryReport(req: Request, res: Response, next: NextFun
         expiryDate: s.expiryDate,
         expired: s.expiryDate && s.expiryDate < new Date(),
       })),
-    });
-  } catch (err) { next(err); }
-}
-
-export async function sinReport(_req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    // El modulo de facturacion electronica (SIN) fue eliminado por requerimiento.
-    res.json({
-      module: 'SIN',
-      enabled: false,
-      note: 'Modulo de facturacion electronica eliminado del sistema',
     });
   } catch (err) { next(err); }
 }

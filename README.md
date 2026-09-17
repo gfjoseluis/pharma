@@ -42,28 +42,25 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
 | `cajero` | `cajero123` | Solo ventas y clientes |
 
 ## Licencias (módulos, eternas sin expiración)
-Activadas por defecto con códigos demo (ver `Configuración → Licencias`):
+Activadas por defecto con códigos demo:
 
 | Módulo | Código |
 |---|---|
 | POS | `POS-1234-ABCD` |
-| QR | `QR-4321-WXYZ` |
-| FACTURACION | `FAC-5678-EFGH` |
 | REPORTES | `REP-9999-MNOP` |
 | BACKUPS | `BAK-1111-QRST` |
 | INVENTARIO | `INV-2222-UVWX` |
 
 ## Módulos
-- **Dashboard** — ventas del día, ganancias, stock bajo, lotes por vencer, facturas, gráficos semanal.
+- **Dashboard** — ventas del día, ganancias, stock bajo, lotes por vencer, gráficos semanal.
 - **Inventario** — productos (SKU único con validación/corrección automática), categorías, laboratorios, unidades de medida, proveedores (muchos-a-muchos con productos).
-- **Compras** — centralizadas, con lotes/vencimientos y descargo al SIN por factura.
+- **Compras** — centralizadas, con lotes/vencimientos y referencia de factura del proveedor.
 - **Sucursales** — stock por sucursal, distribución desde bodega, transferencias, movimientos.
-- **Ventas (POS)** — venta simple (efectivo), QR/tarjeta (solo sucursales mediana/grande) con modal QR y confirmación bancaria, cliente con buscador por nombre/NIT-CI y alta rápida.
-- **Facturación SIN** — emisión automática con CUF/código de control, impresión inmediata, anulación (no modificación), descargo mensual.
-- **Reportes** — ventas/ganancias diario-semanal-mensual, más vendidos, stock bajo, vencimientos, facturación SIN; exportación CSV/PDF (imprimir).
+- **Ventas (POS)** — venta simple (efectivo, tarjeta, QR), cliente con buscador por nombre/NIT-CI y alta rápida. Exige caja abierta por cajero.
+- **Caja** — apertura con monto inicial y cierre con conteo de efectivo por cajero; esperado, contado y diferencia (sobrante/faltante); historial de turnos.
+- **Reportes** — ventas/ganancias diario-semanal-mensual, más vendidos, stock bajo, vencimientos; exportación CSV/PDF (imprimir).
 - **Usuarios** — roles (admin/cajero/técnico), sucursal asignada, permisos por checkbox por módulo.
-- **Licencias** — panel de módulos con códigos, middleware `CheckModule`.
-- **Backups** — dump `.sql.gz` local, subida a Google Drive (`GOOGLE_APPLICATION_CREDENTIALS` en `backend/.env`), tarea diaria programada:
+- **Backups** — dump `.sql.gz` local en `backend/backups/`, tarea diaria programada:
   ```powershell
   powershell -ExecutionPolicy Bypass -File .\scripts\backup-task.ps1 -Install
   ```
@@ -75,20 +72,18 @@ Activadas por defecto con códigos demo (ver `Configuración → Licencias`):
 - `GET /api/inventory/products/search?q=&branchId=`
 - `GET/POST/DELETE /api/clients`
 - `POST /api/sales`, `GET /api/sales/recent`, `PUT /api/sales/:id`, `DELETE /api/sales/:id`, `POST /api/sales/:id/anular`
-- `POST /api/payments/qr/confirm`, `POST /api/payments/card/confirm`
-- `GET/POST /api/invoices`, `POST /api/invoices/:id/anular`, `GET /api/invoices/print/:id`, `GET /api/invoices/descargo`
-- `GET /api/reports/sales`, `GET /api/reports/inventory`, `GET /api/reports/sin`, `GET /api/reports/export`
-- `POST /api/licenses/activate`, `GET /api/licenses`
+- `GET /api/cash/status`, `POST /api/cash/open`, `POST /api/cash/close`, `GET /api/cash/history`, `GET /api/cash/report?date=`
+- `GET /api/reports/sales`, `GET /api/reports/inventory`, `GET /api/reports/export`
 - `POST /api/backups/force`, `GET /api/backups/status`
 - `GET /api/logs`, `GET /api/logs/:filename`
 
 ## Estructura
 ```
 backend/src/modules/   → auth, users, clients, inventory, purchases, branches,
-                         sales, payments, invoices, reports, licenses, backups, logs
-  ├─ routes.ts         → definición de endpoints + middlewares (auth, permisos, CheckModule)
+                         sales, cash, reports, backups, logs
+  ├─ routes.ts         → definición de endpoints + middlewares (auth, permisos)
   ├─ controller.ts     → manejo HTTP
-  └─ service.ts        → lógica de negocio (facturación SIN)
+  └─ service.ts        → lógica de negocio
 backend/prisma/        → schema + migraciones
 backend/scripts/       → install.ts, migrate.ts, seed.ts
 frontend/src/pages/    → una página por módulo

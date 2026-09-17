@@ -55,7 +55,7 @@ export default function ExpiryBell() {
         onClick={() => setOpen((o) => !o)}
         style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
       >
-        <span>⚠️ Por vencer</span>
+        <span>Por vencer</span>
         <span className={`badge ${count > 0 ? 'badge-red' : 'badge-gray'}`}>{count}</span>
       </button>
       {open && (

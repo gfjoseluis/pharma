@@ -8,8 +8,6 @@ export const env = {
   databaseUrl: process.env.DATABASE_URL || 'mysql://root:@localhost:3306/farmacia',
   jwtSecret: process.env.JWT_SECRET || 'cambiar-esta-clave-por-una-segura',
   jwtExpires: process.env.JWT_EXPIRES || '12h',
-  googleCredentials: process.env.GOOGLE_APPLICATION_CREDENTIALS || '',
-  googleDriveFolderId: process.env.GOOGLE_DRIVE_FOLDER_ID || '',
   db: {
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '3306', 10),

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, errMsg } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { Button, Card, Modal, Field, Input, Alert, fmtMoney, Badge } from '../components/ui';
@@ -18,6 +19,7 @@ interface ProductHit {
   lab: { id: number; name: string } | null;
   unit: string | null;
   stockOwn: number;
+  expiredOwn: number;
   stockOther: number;
   branches: Array<{ id: number; name: string; quantity: number }>;
 }
@@ -53,7 +55,7 @@ interface SaleResult {
 }
 
 const METHOD_LABEL: Record<string, string> = { EFECTIVO: 'efectivo', TARJETA: 'tarjeta', QR: 'QR / transferencia' };
-const METHOD_BTN: Record<string, string> = { EFECTIVO: '💵 Efectivo', TARJETA: '💳 Tarjeta', QR: '📱 QR' };
+const METHOD_BTN: Record<string, string> = { EFECTIVO: 'Efectivo', TARJETA: 'Tarjeta', QR: 'QR' };
 
 const ingredientsText = (list: Array<{ ingredient: string; concentration: string | null }>) =>
   list.map((i) => `${i.ingredient}${i.concentration ? ` ${i.concentration}` : ''}`).join(' + ');
@@ -79,9 +81,17 @@ export default function POS() {
   const searchRef = useRef<HTMLInputElement>(null);
 
   const canSale = hasPerm('pos.sale');
+  const [cashOpen, setCashOpen] = useState<boolean | null>(null);
+
+  const loadCash = () => {
+    api.get('/cash/status')
+      .then((r) => setCashOpen(!!r.data.open))
+      .catch(() => setCashOpen(null));
+  };
 
   useEffect(() => {
     api.get('/clients?q=').then((r) => setClients(r.data)).catch(() => {});
+    loadCash();
     searchRef.current?.focus();
   }, []);
 
@@ -220,8 +230,11 @@ export default function POS() {
       setClientQ('');
       setReceived('');
       setSaleResult(result);
+      loadCash();
     } catch (err) {
-      setError(errMsg(err));
+      const msg = errMsg(err);
+      setError(msg);
+      if (msg.toLowerCase().includes('caja')) loadCash();
     } finally {
       setBusy(false);
     }
@@ -235,6 +248,11 @@ export default function POS() {
     <div>
       <h2 style={{ marginBottom: 16 }}>Punto de Venta — {user?.branch?.name || 'Sin sucursal'}</h2>
       <Alert type="error">{error}</Alert>
+      {cashOpen === false && (
+        <div className="alert alert-error">
+          Caja cerrada: debe aperturar su caja antes de vender. Vaya a <Link to="/cash">Caja</Link> e ingrese el monto inicial del turno.
+        </div>
+      )}
       <div className="pos-layout">
         <Card title="Buscar producto (Enter agrega el resaltado; flechas ↑ ↓ navegan)">
           <div className="pos-search">
@@ -268,6 +286,11 @@ export default function POS() {
                       SKU {p.sku} · {fmtMoney(p.price)}
                       {p.stockOwn > 0 ? ` · stock en su sucursal: ${p.stockOwn}` : ''}
                     </div>
+                    {p.expiredOwn > 0 && (
+                      <div className="p-meta" style={{ marginTop: 4 }}>
+                        <span className="badge badge-red">{p.expiredOwn} vencidas bloqueadas (no se venden)</span>
+                      </div>
+                    )}
                     {p.stockOwn <= 0 && p.branches.length > 0 && (
                       <div className="p-meta" style={{ marginTop: 4 }}>
                         Disponible en otras sucursales:
@@ -327,7 +350,8 @@ export default function POS() {
         </Card>
       </div>
 
-      <Card title="Finalizar venta">
+      <div className="pos-ticket">
+      <Card title="Cobrar">
         <div className="form-row">
           <div className="field" style={{ minWidth: 280 }}>
             <span>Cliente (opcional, buscar por nombre o NIT/CI)</span>
@@ -410,14 +434,15 @@ export default function POS() {
           <Button
             variant="success"
             className="btn-pay"
-            disabled={busy || !cart.length || !canSale || !receivedOk}
+            disabled={busy || !cart.length || !canSale || !receivedOk || cashOpen === false}
             onClick={doSale}
           >
-            {busy ? 'Procesando...' : `💵 Cobrar ${fmtMoney(total)} (${payMethod === 'EFECTIVO' ? 'efectivo' : payMethod === 'TARJETA' ? 'tarjeta' : 'QR'})`}
+            {busy ? 'Procesando...' : `Cobrar ${fmtMoney(total)} (${payMethod === 'EFECTIVO' ? 'efectivo' : payMethod === 'TARJETA' ? 'tarjeta' : 'QR'})`}
           </Button>
           {!canSale && <span className="p-meta" style={{ alignSelf: 'center' }}>Sin permiso para cobrar: contacte al administrador.</span>}
         </div>
       </Card>
+      </div>
 
       {/* Modal: cliente nuevo */}
       <Modal title="Registrar nuevo cliente" open={clientModal} onClose={() => setClientModal(false)} footer={<>
@@ -439,8 +464,8 @@ export default function POS() {
       >
         {saleResult && (
           <div style={{ textAlign: 'center', padding: 8 }}>
-            <div style={{ fontSize: 40 }}>✅</div>
-            <div style={{ fontSize: 18, fontWeight: 700, margin: '6px 0' }}>{saleResult.sale.number}</div>
+            <div><span className="sale-stamp">Cobrada</span></div>
+            <div style={{ fontSize: 18, fontWeight: 700, margin: '10px 0 6px' }}>{saleResult.sale.number}</div>
             <div>Total cobrado: <b>{fmtMoney(saleResult.sale.total)}</b></div>
             {saleResult.sale.paymentMethod === 'EFECTIVO' && (
               <>

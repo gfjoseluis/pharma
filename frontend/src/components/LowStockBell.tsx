@@ -10,6 +10,7 @@ interface LowStockItem {
   minStock: number;
   price: number;
   total: number;
+  expiredQty: number;
   branches: Array<{ id: number; name: string; quantity: number }>;
 }
 
@@ -55,7 +56,7 @@ export default function LowStockBell() {
         onClick={() => setOpen((o) => !o)}
         style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
       >
-        <span>📦 Reponer stock</span>
+        <span>Reponer stock</span>
         <span className={`badge ${count > 0 ? 'badge-red' : 'badge-gray'}`}>{count}</span>
       </button>
       {open && (
@@ -83,7 +84,10 @@ export default function LowStockBell() {
               <div>
                 <div className="p-name" style={{ fontSize: 13 }}>
                   {it.name}
-                  {' '}<Badge color="red">Stock {it.total} / min {it.minStock}</Badge>
+                  {' '}<Badge color="red">Vendible {it.total} / min {it.minStock}</Badge>
+                  {it.expiredQty > 0 && (
+                    <span> <Badge color="yellow">{it.expiredQty} vencidas por dar de baja</Badge></span>
+                  )}
                 </div>
                 <div className="p-meta">
                   {it.sku} · {fmtMoney(it.price)}
@@ -95,7 +99,7 @@ export default function LowStockBell() {
             </div>
           ))}
           <div className="p-meta" style={{ padding: '6px 8px', borderTop: '1px solid var(--border)', marginTop: 4 }}>
-            💡 Registre compras en <b>/purchases</b> para reponer el stock.
+            Registre compras en <b>/purchases</b> para reponer el stock.
           </div>
         </div>
       )}

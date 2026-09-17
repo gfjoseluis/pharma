@@ -3,6 +3,7 @@
 export const ACTION_GROUPS: Record<string, string[]> = {
   Dashboard: ['dashboard.view'],
   'Punto de venta': ['pos.view', 'pos.sale'],
+  Caja: ['cash.view', 'cash.open', 'cash.close'],
   Ventas: ['sales.view', 'sales.annul', 'sales.delete'],
   Clientes: ['clients.view', 'clients.create', 'clients.edit', 'clients.delete'],
   Productos: ['products.view', 'products.create', 'products.edit', 'products.delete'],
@@ -20,6 +21,9 @@ export const ACTION_LABELS: Record<string, string> = {
   'dashboard.view': 'Ver dashboard',
   'pos.view': 'Usar punto de venta',
   'pos.sale': 'Cobrar ventas',
+  'cash.view': 'Ver caja',
+  'cash.open': 'Aperturar caja',
+  'cash.close': 'Cerrar caja',
   'sales.view': 'Ver ventas',
   'sales.annul': 'Anular ventas',
   'sales.delete': 'Desactivar ventas',
@@ -53,6 +57,7 @@ export const ALL_ACTIONS: string[] = Object.values(ACTION_GROUPS).flat();
 const LEGACY_TO_ACTIONS: Record<string, string[]> = {
   dashboard: ['dashboard.view'],
   pos: ['pos.view', 'pos.sale'],
+  cash: ['cash.view', 'cash.open', 'cash.close'],
   sales: ['sales.view', 'sales.annul', 'sales.delete'],
   clients: ['clients.view', 'clients.create', 'clients.edit', 'clients.delete'],
   inventory: [

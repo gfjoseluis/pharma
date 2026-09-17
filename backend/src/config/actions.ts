@@ -5,6 +5,7 @@
 export const ACTIONS: Record<string, string[]> = {
   Dashboard: ['dashboard.view'],
   'Punto de venta': ['pos.view', 'pos.sale'],
+  Caja: ['cash.view', 'cash.open', 'cash.close'],
   Ventas: ['sales.view', 'sales.annul', 'sales.delete'],
   Clientes: ['clients.view', 'clients.create', 'clients.edit', 'clients.delete'],
   Productos: ['products.view', 'products.create', 'products.edit', 'products.delete'],
@@ -24,6 +25,7 @@ export const ALL_ACTIONS: string[] = Object.values(ACTIONS).flat();
 export const LEGACY_TO_ACTIONS: Record<string, string[]> = {
   dashboard: ['dashboard.view'],
   pos: ['pos.view', 'pos.sale'],
+  cash: ['cash.view', 'cash.open', 'cash.close'],
   sales: ['sales.view', 'sales.annul', 'sales.delete'],
   clients: ['clients.view', 'clients.create', 'clients.edit', 'clients.delete'],
   inventory: [
