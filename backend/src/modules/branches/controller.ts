@@ -1,17 +1,24 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/prisma';
+import { getPagination, paged } from '../../utils/pagination';
 import { logAction } from '../../utils/logger';
 
 // ==================== CRUD sucursales ====================
-export async function list(_req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function list(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const branches = await prisma.branch.findMany({
-      orderBy: { name: 'asc' },
-      include: {
-        _count: { select: { users: true, stocks: true, sales: true } },
-      },
-    });
-    res.json(branches);
+    const { page, pageSize, skip } = getPagination(req);
+    const [branches, total] = await Promise.all([
+      prisma.branch.findMany({
+        orderBy: { name: 'asc' },
+        include: {
+          _count: { select: { users: true, stocks: true, sales: true } },
+        },
+        skip,
+        take: pageSize,
+      }),
+      prisma.branch.count(),
+    ]);
+    res.json(paged(branches, total, page, pageSize));
   } catch (err) { next(err); }
 }
 
@@ -64,28 +71,34 @@ export async function stock(req: Request, res: Response, next: NextFunction): Pr
   try {
     const branchId = req.query.branchId ? parseInt(req.query.branchId as string, 10) : undefined;
     const q = String(req.query.q || '').trim();
-    const rows = await prisma.stock.findMany({
-      where: {
-        ...(branchId ? { branchId } : {}),
-        ...(q ? { product: { OR: [{ name: { contains: q } }, { sku: { contains: q } }] } } : {}),
-      },
-      include: {
-        product: {
-          select: {
-            id: true,
-            name: true,
-            sku: true,
-            form: { select: { name: true } },
-            minStock: true,
-            unitMeasure: { select: { shortName: true } },
+    const where = {
+      ...(branchId ? { branchId } : {}),
+      ...(q ? { product: { OR: [{ name: { contains: q } }, { sku: { contains: q } }] } } : {}),
+    };
+    const { page, pageSize, skip } = getPagination(req);
+    const [rows, total] = await Promise.all([
+      prisma.stock.findMany({
+        where,
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              form: { select: { name: true } },
+              minStock: true,
+              unitMeasure: { select: { shortName: true } },
+            },
           },
+          branch: { select: { id: true, name: true } },
         },
-        branch: { select: { id: true, name: true } },
-      },
-      orderBy: { product: { name: 'asc' } },
-      take: 500,
-    });
-    res.json(rows);
+        orderBy: { product: { name: 'asc' } },
+        skip,
+        take: pageSize,
+      }),
+      prisma.stock.count({ where }),
+    ]);
+    res.json(paged(rows, total, page, pageSize));
   } catch (err) { next(err); }
 }
 
@@ -127,24 +140,32 @@ export async function stockReport(req: Request, res: Response, next: NextFunctio
       entry.lots.push({ lot: lotKey, expiryDate: r.expiryDate, quantity: r.quantity });
       map.set(key, entry);
     }
-    res.json(Array.from(map.values()));
+    const all = Array.from(map.values());
+    const { page, pageSize, skip } = getPagination(req);
+    res.json(paged(all.slice(skip, skip + pageSize), all.length, page, pageSize));
   } catch (err) { next(err); }
 }
 
 export async function movements(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const branchId = req.query.branchId ? parseInt(req.query.branchId as string, 10) : undefined;
-    const movements = await prisma.stockMovement.findMany({
-      where: branchId ? { OR: [{ branchId }, { targetBranchId: branchId }] } : undefined,
-      include: {
-        product: { select: { id: true, name: true, sku: true } },
-        branch: { select: { id: true, name: true } },
-        user: { select: { id: true, fullName: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    });
-    res.json(movements);
+    const where = branchId ? { OR: [{ branchId }, { targetBranchId: branchId }] } : undefined;
+    const { page, pageSize, skip } = getPagination(req);
+    const [movements, total] = await Promise.all([
+      prisma.stockMovement.findMany({
+        where,
+        include: {
+          product: { select: { id: true, name: true, sku: true } },
+          branch: { select: { id: true, name: true } },
+          user: { select: { id: true, fullName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+      prisma.stockMovement.count({ where }),
+    ]);
+    res.json(paged(movements, total, page, pageSize));
   } catch (err) { next(err); }
 }
 

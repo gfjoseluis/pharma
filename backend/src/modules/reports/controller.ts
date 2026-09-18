@@ -191,7 +191,7 @@ export async function inventoryReport(req: Request, res: Response, next: NextFun
       stockMap.set(key, entry);
     }
     const lowStock = Array.from(stockMap.values())
-      .filter((e) => e.total <= e.product.minStock)
+      .filter((e) => e.product.minStock > 0 && e.total <= e.product.minStock)
       .sort((a, b) => a.total - b.total);
 
     // Lotes por vencer (60 dias) o vencidos

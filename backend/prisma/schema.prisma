@@ -99,6 +99,7 @@ model Product {
   unitMeasure   UnitMeasure?      @relation(fields: [unitMeasureId], references: [id])
   formId        Int?
   form          Form?             @relation(fields: [formId], references: [id])
+  therapeuticAction String? // accion terapeutica (vademecum); la Categoria es el agrupado de farmacia
   concentration String? // resumen opcional (ej: "500 mg"); la concentracion por principio activo va en ingredients
   restrictedUse Boolean           @default(false) // uso restringido (hospitalario, etc.)
   price         Decimal           @default(0) @db.Decimal(10, 2)

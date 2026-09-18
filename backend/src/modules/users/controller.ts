@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../config/prisma';
+import { getPagination, paged } from '../../utils/pagination';
 import { logAction } from '../../utils/logger';
 import { normalizePermissions } from '../../config/actions';
 
@@ -8,10 +9,9 @@ function parsePermissions(p: unknown): string[] {
   return normalizePermissions(p);
 }
 
-export async function list(_req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function list(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const users = await prisma.user.findMany({
-      select: {
+    const select = {
         id: true,
         username: true,
         fullName: true,
@@ -21,10 +21,13 @@ export async function list(_req: Request, res: Response, next: NextFunction): Pr
         createdAt: true,
         permissions: true,
         branch: { select: { id: true, name: true } },
-      },
-      orderBy: { id: 'asc' },
-    });
-    res.json(users);
+      } as const;
+    const { page, pageSize, skip } = getPagination(req);
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({ select, orderBy: { id: 'asc' }, skip, take: pageSize }),
+      prisma.user.count(),
+    ]);
+    res.json(paged(users, total, page, pageSize));
   } catch (err) {
     next(err);
   }

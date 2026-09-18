@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, errMsg } from '../api/client';
-import { Card, Table, Button, Modal, Spinner, Alert, fmtMoney, fmtDate, Badge } from '../components/ui';
+import { Card, Table, Button, Modal, Spinner, Alert, fmtMoney, fmtDate, Badge, Pagination } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 
 interface Branch { id: number; name: string; }
@@ -40,18 +40,26 @@ export default function Purchases() {
   const { hasPerm } = useAuth();
   const navigate = useNavigate();
   const [rows, setRows] = useState<Purchase[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [detail, setDetail] = useState<Purchase | null>(null);
   const [monthTotal, setMonthTotal] = useState<{ count: number; total: number } | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const load = () => {
+  const load = (pg: number = page) => {
     setLoading(true);
-    api.get('/purchases').then((r) => setRows(r.data)).catch((e) => setError(errMsg(e))).finally(() => setLoading(false));
+    api.get('/purchases', { params: { page: pg, pageSize: 20 } })
+      .then((r) => {
+        setRows(r.data.data);
+        setTotal(r.data.total);
+      })
+      .catch((e) => setError(errMsg(e)))
+      .finally(() => setLoading(false));
     api.get('/purchases/totals').then((r) => setMonthTotal(r.data)).catch(() => {});
   };
 
-  useEffect(load, []);
+  useEffect(() => { load(1); }, []);
 
   const remove = async (p: Purchase) => {
     if (!window.confirm(`¿Eliminar la compra #${p.id}? Se revierte el stock.`)) return;
@@ -83,7 +91,7 @@ export default function Purchases() {
         </div>
         <div className="kpi">
           <div className="k-label">Compras registradas (lista)</div>
-          <div className="k-value">{rows.length}</div>
+          <div className="k-value">{total}</div>
         </div>
       </div>
 
@@ -106,6 +114,7 @@ export default function Purchases() {
           ))}
         </Table>
         {!rows.length && <div className="empty">Sin compras registradas</div>}
+        <Pagination page={page} total={total} pageSize={20} onChange={(p) => { setPage(p); load(p); }} />
       </Card>
 
       {/* Detalle de compra */}

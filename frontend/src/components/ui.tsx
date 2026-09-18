@@ -86,6 +86,23 @@ export function Spinner() {
   return <div className="center-loading">Cargando...</div>;
 }
 
+export function Pagination({ page, total, pageSize, onChange }: { page: number; total: number; pageSize: number; onChange: (p: number) => void }) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  if (total === 0) return null;
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(total, page * pageSize);
+  return (
+    <div className="pager">
+      <span className="p-meta">{from}–{to} de {total}</span>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <Button variant="secondary" className="btn-sm" disabled={page <= 1} onClick={() => onChange(page - 1)}>Anterior</Button>
+        <span className="p-meta">Página {page} de {pages}</span>
+        <Button variant="secondary" className="btn-sm" disabled={page >= pages} onClick={() => onChange(page + 1)}>Siguiente</Button>
+      </div>
+    </div>
+  );
+}
+
 export function Empty({ text = 'Sin registros' }: { text?: string }) {
   return <div className="empty">{text}</div>;
 }

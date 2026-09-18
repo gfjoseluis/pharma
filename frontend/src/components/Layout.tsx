@@ -14,7 +14,7 @@ interface NavEntry {
 
 const NAV: NavEntry[] = [
   { to: '/', label: 'Tablero', code: 'Ta', perm: 'dashboard.view', group: 'Mostrador' },
-  { to: '/pos', label: 'Punto de venta', code: 'Pv', perm: 'pos.view', group: 'Mostrador' },
+  { to: '/pos', label: 'Punto de Venta', code: 'Pv', perm: 'pos.view', group: 'Mostrador' },
   { to: '/cash', label: 'Caja', code: 'Cj', perm: 'cash.view', group: 'Mostrador' },
   { to: '/sales', label: 'Ventas', code: 'Ve', perm: 'sales.view', group: 'Mostrador' },
   { to: '/clients', label: 'Clientes', code: 'Cl', perm: 'clients.view', group: 'Mostrador' },

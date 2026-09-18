@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/prisma';
 import { logAction } from '../../utils/logger';
+import { getPagination, paged } from '../../utils/pagination';
 
 type ModelName = 'category' | 'laboratory' | 'unitMeasure' | 'form';
 
@@ -16,10 +17,16 @@ export function simpleCrud(modelName: ModelName) {
   const model = modelMap[modelName];
   const label = modelName;
   return {
-    list: async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+    list: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
-        const rows = await model.findMany({ orderBy: { name: 'asc' } });
-        res.json(rows);
+        const q = String(req.query.q || '').trim();
+        const where = q ? { name: { contains: q } } : undefined;
+        const { page, pageSize, skip } = getPagination(req);
+        const [rows, total] = await Promise.all([
+          model.findMany({ where, orderBy: { name: 'asc' }, skip, take: pageSize }),
+          model.count({ where }),
+        ]);
+        res.json(paged(rows, total, page, pageSize));
       } catch (err) { next(err); }
     },
     create: async (req: Request, res: Response, next: NextFunction): Promise<void> => {

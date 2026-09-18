@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, errMsg } from '../api/client';
-import { Card, Table, Button, Modal, Field, Input, Select, SearchBox, Spinner, Alert, fmtMoney, Badge } from '../components/ui';
+import SelectSearch, { AsyncSelect } from '../components/SelectSearch';
+import { Card, Table, Button, Modal, Field, Input, SearchBox, Spinner, Alert, fmtMoney, Badge, Pagination } from '../components/ui';
 import { isValidMoney, moneyToNumber } from '../money';
 import { useAuth } from '../context/AuthContext';
 
@@ -15,6 +16,7 @@ interface Product {
   sku: string;
   name: string;
   concentration: string | null;
+  therapeuticAction: string | null;
   ingredients: Array<{ ingredient: string; concentration: string | null }>;
   form: Form | null;
   restrictedUse: boolean;
@@ -50,7 +52,7 @@ const serializeDose = (amount: string, unit: string): string => {
 
 const emptyForm = {
   sku: '', autoSku: false, name: '', barcode: '', categoryId: '', laboratoryId: '',
-  unitMeasureId: '', formId: '', concentration: '', restrictedUse: false,
+  unitMeasureId: '', formId: '', concentration: '', therapeuticAction: '', restrictedUse: false,
   ingredients: [] as IngredientRow[],
   price: '', costPrice: '', minStock: '0',
 };
@@ -58,35 +60,45 @@ const emptyForm = {
 export default function Products() {
   const { hasPerm } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [labs, setLabs] = useState<Lab[]>([]);
-  const [units, setUnits] = useState<Unit[]>([]);
-  const [forms, setForms] = useState<Form[]>([]);
+  const [refLabels, setRefLabels] = useState({ category: '', laboratory: '', unit: '', form: '' });
   const [q, setQ] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [showInactive, setShowInactive] = useState(true);
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const loadRefs = () => {
-    api.get('/inventory/categories').then((r) => setCategories(r.data)).catch(() => {});
-    api.get('/inventory/laboratories').then((r) => setLabs(r.data)).catch(() => {});
-    api.get('/inventory/units').then((r) => setUnits(r.data)).catch(() => {});
-    api.get('/inventory/forms').then((r) => setForms(r.data)).catch(() => {});
+  const searchRefs = (endpoint: string) => async (q: string) => {
+    const r = await api.get(endpoint, { params: { q, pageSize: 20 } });
+    return r.data.data.map((x: { id: number; name: string }) => ({ value: String(x.id), label: x.name }));
   };
+  const searchCategories = searchRefs('/inventory/categories');
+  const searchLabs = searchRefs('/inventory/laboratories');
+  const searchUnits = searchRefs('/inventory/units');
+  const searchForms = searchRefs('/inventory/forms');
 
   const load = useCallback(() => {
     setLoading(true);
+    const params = new URLSearchParams({ q, page: String(page), pageSize: '20' });
+    if (showInactive) params.set('active', 'false');
     api
-      .get(`/inventory/products?q=${encodeURIComponent(q)}`)
-      .then((r) => setProducts(r.data))
+      .get(`/inventory/products?${params.toString()}`)
+      .then((r) => {
+        setProducts(r.data.data);
+        setTotal(r.data.total);
+      })
       .catch((e) => setError(errMsg(e)))
       .finally(() => setLoading(false));
-  }, [q]);
+  }, [q, page, showInactive]);
 
   useEffect(() => {
-    loadRefs();
+    setPage(1);
+  }, [q, showInactive]);
+
+  useEffect(() => {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
   }, [load]);
@@ -97,18 +109,26 @@ export default function Products() {
   const openNew = () => {
     setEditing(null);
     setForm(emptyForm);
+    setRefLabels({ category: '', laboratory: '', unit: '', form: '' });
     setError('');
     setModal(true);
   };
 
   const openEdit = (p: Product) => {
     setEditing(p);
+    setRefLabels({
+      category: p.category?.name || '',
+      laboratory: p.laboratory?.name || '',
+      unit: p.unitMeasure?.name || '',
+      form: p.form?.name || '',
+    });
     setForm({
       sku: p.sku, autoSku: false, name: p.name, barcode: p.barcode || '',
       categoryId: p.category ? String(p.category.id) : '', laboratoryId: p.laboratory ? String(p.laboratory.id) : '',
       unitMeasureId: p.unitMeasure ? String(p.unitMeasure.id) : '',
       formId: p.form ? String(p.form.id) : '',
       concentration: p.concentration || '',
+      therapeuticAction: p.therapeuticAction || '',
       restrictedUse: p.restrictedUse,
       ingredients: p.ingredients.map((i) => {
         const d = parseDose(i.concentration);
@@ -163,6 +183,15 @@ export default function Products() {
     }
   };
 
+  const activate = async (p: Product) => {
+    try {
+      await api.put(`/inventory/products/${p.id}`, { active: true });
+      load();
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  };
+
   const setIngredient = (idx: number, key: keyof IngredientRow, val: string) => {
     setForm((f) => ({
       ...f,
@@ -176,22 +205,27 @@ export default function Products() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <h2>Productos</h2>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <SearchBox value={q} onChange={setQ} placeholder="Buscar por nombre, principio activo o forma..." />
+          <label className="checkbox-row" style={{ whiteSpace: 'nowrap' }} title="Los productos importados nacen desactivados: actívelos al fijar precio y stock">
+            <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+            Incluir desactivados
+          </label>
           {hasPerm('products.create') && <Button onClick={openNew}>+ Nuevo producto</Button>}
         </div>
       </div>
       <Alert type="error">{error}</Alert>
       <Card>
-        <Table head={['SKU', 'Nombre', 'Principios activos', 'Forma', 'Lab', 'Uso restringido', 'Precio', 'Stock total', 'Min', 'Acciones']}>
+        <Table head={['SKU', 'Nombre', 'Principios activos', 'Forma', 'Lab', 'Uso restringido', 'Precio', 'Stock total', 'Min', 'Estado', 'Acciones']}>
           {products.map((p) => (
             <tr key={p.id}>
               <td><Badge color="blue">{p.sku}</Badge></td>
               <td>
                 <b>{p.name}</b>
                 {p.barcode && <div className="p-meta">Cod.barra: {p.barcode}</div>}
+                {p.therapeuticAction && <div className="p-meta">{p.therapeuticAction}</div>}
               </td>
               <td>
                 {p.ingredients.length ? ingredientsText(p.ingredients) : (p.concentration || '-')}
@@ -202,14 +236,17 @@ export default function Products() {
               <td>{fmtMoney(p.price)}</td>
               <td>{totalStock(p)}</td>
               <td>{p.minStock}</td>
+              <td>{p.active ? <Badge color="green">Activo</Badge> : <Badge color="gray">Inactivo</Badge>}</td>
               <td>
                 {hasPerm('products.edit') && <Button variant="secondary" className="btn-sm" onClick={() => openEdit(p)}>Editar</Button>}{' '}
                 {p.active && hasPerm('products.delete') && <Button variant="danger" className="btn-sm" onClick={() => deactivate(p)}>Desactivar</Button>}
+                {!p.active && hasPerm('products.edit') && <Button variant="success" className="btn-sm" onClick={() => activate(p)}>Activar</Button>}
               </td>
             </tr>
           ))}
         </Table>
         {!products.length && <div className="empty">Sin productos. El SKU es obligatorio y unico.</div>}
+        <Pagination page={page} total={total} pageSize={20} onChange={setPage} />
       </Card>
 
       <Modal
@@ -239,14 +276,18 @@ export default function Products() {
         </div>
         <div className="alert alert-info">El SKU se corrige automaticamente: mayusculas, sin espacios, ceros iniciales eliminados.</div>
         <Field label="Nombre (obligatorio)"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+        <Field label="Acción terapéutica (ej: Analgésico, Antibiótico)"><Input value={form.therapeuticAction} onChange={(e) => setForm({ ...form, therapeuticAction: e.target.value })} /></Field>
 
         <div className="form-row">
           <Field label="Codigo de barras"><Input value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} /></Field>
           <Field label="Forma farmaceutica">
-            <Select value={form.formId} onChange={(e) => setForm({ ...form, formId: e.target.value })}>
-              <option value="">—</option>
-              {forms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </Select>
+            <AsyncSelect
+              value={form.formId}
+              selectedLabel={refLabels.form}
+              onChange={(v, o) => { setForm({ ...form, formId: v }); setRefLabels((r) => ({ ...r, form: o?.label || '' })); }}
+              onSearch={searchForms}
+              placeholder="Buscar forma (3+ letras)..."
+            />
           </Field>
         </div>
 
@@ -273,14 +314,12 @@ export default function Products() {
                 onChange={(e) => setIngredient(idx, 'amount', e.target.value)}
                 style={{ flex: 1 }}
               />
-              <Select
+              <SelectSearch
                 value={row.unit}
-                onChange={(e) => setIngredient(idx, 'unit', e.target.value)}
-                style={{ width: 120 }}
-              >
-                <option value="">Unidad...</option>
-                {DOSE_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-              </Select>
+                onChange={(v) => setIngredient(idx, 'unit', v)}
+                options={DOSE_UNITS.map((u) => ({ value: u, label: u }))}
+                placeholder="Unidad..."
+              />
               <Button variant="danger" className="btn-sm" onClick={() => setForm((f) => ({ ...f, ingredients: f.ingredients.filter((_, i) => i !== idx) }))}>×</Button>
             </div>
           ))}
@@ -303,22 +342,31 @@ export default function Products() {
 
         <div className="form-row">
           <Field label="Categoria">
-            <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
-              <option value="">—</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
+            <AsyncSelect
+              value={form.categoryId}
+              selectedLabel={refLabels.category}
+              onChange={(v, o) => { setForm({ ...form, categoryId: v }); setRefLabels((r) => ({ ...r, category: o?.label || '' })); }}
+              onSearch={searchCategories}
+              placeholder="Buscar categoría (3+ letras)..."
+            />
           </Field>
           <Field label="Laboratorio">
-            <Select value={form.laboratoryId} onChange={(e) => setForm({ ...form, laboratoryId: e.target.value })}>
-              <option value="">—</option>
-              {labs.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </Select>
+            <AsyncSelect
+              value={form.laboratoryId}
+              selectedLabel={refLabels.laboratory}
+              onChange={(v, o) => { setForm({ ...form, laboratoryId: v }); setRefLabels((r) => ({ ...r, laboratory: o?.label || '' })); }}
+              onSearch={searchLabs}
+              placeholder="Buscar laboratorio (3+ letras)..."
+            />
           </Field>
           <Field label="Unidad de medida de compra">
-            <Select value={form.unitMeasureId} onChange={(e) => setForm({ ...form, unitMeasureId: e.target.value })}>
-              <option value="">—</option>
-              {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </Select>
+            <AsyncSelect
+              value={form.unitMeasureId}
+              selectedLabel={refLabels.unit}
+              onChange={(v, o) => { setForm({ ...form, unitMeasureId: v }); setRefLabels((r) => ({ ...r, unit: o?.label || '' })); }}
+              onSearch={searchUnits}
+              placeholder="Buscar unidad (3+ letras)..."
+            />
           </Field>
         </div>
         <div className="form-row">

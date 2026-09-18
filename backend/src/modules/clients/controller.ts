@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/prisma';
+import { getPagination, paged } from '../../utils/pagination';
 import { logAction } from '../../utils/logger';
 
 const CI_NIT_REGEX = /^[A-Z0-9-]{4,20}$/i;
@@ -7,14 +8,15 @@ const CI_NIT_REGEX = /^[A-Z0-9-]{4,20}$/i;
 export async function list(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const q = String(req.query.q || '').trim();
-    const clients = await prisma.client.findMany({
-      where: q
-        ? { OR: [{ name: { contains: q } }, { ciNit: { contains: q } }] }
-        : undefined,
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
-    res.json(clients);
+    const where = q
+      ? { OR: [{ name: { contains: q } }, { ciNit: { contains: q } }] }
+      : undefined;
+    const { page, pageSize, skip } = getPagination(req);
+    const [clients, total] = await Promise.all([
+      prisma.client.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take: pageSize }),
+      prisma.client.count({ where }),
+    ]);
+    res.json(paged(clients, total, page, pageSize));
   } catch (err) {
     next(err);
   }

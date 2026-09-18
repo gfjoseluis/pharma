@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, errMsg } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import { Card, Button, Modal, Field, Input, Alert, Spinner, Badge, Table, fmtMoney, fmtDate } from '../components/ui';
+import { Card, Button, Modal, Field, Input, Alert, Spinner, Badge, Table, fmtMoney, fmtDate, Pagination } from '../components/ui';
 import { isValidMoney, moneyToNumber } from '../money';
 
 interface CashStatus {
@@ -63,6 +63,8 @@ export default function Cash() {
   const canClose = hasPerm('cash.close');
   const [status, setStatus] = useState<CashStatus | null>(null);
   const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [hPage, setHPage] = useState(1);
+  const [hTotal, setHTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [opening, setOpening] = useState('');
@@ -76,17 +78,27 @@ export default function Cash() {
   const [reportRows, setReportRows] = useState<ReportRow[]>([]);
   const [reportTotals, setReportTotals] = useState<ReportTotals | null>(null);
 
+  const loadHistory = (pg: number = hPage) => {
+    api.get('/cash/history', { params: { page: pg, pageSize: 20 } })
+      .then((r) => {
+        setHistory(r.data.data);
+        setHTotal(r.data.total);
+      })
+      .catch((e) => setError(errMsg(e)));
+  };
+
   const load = () => {
     setLoading(true);
-    Promise.all([api.get('/cash/status'), api.get('/cash/history'), api.get('/cash/report', { params: { date: reportDate } })])
-      .then(([s, h, r]) => {
+    Promise.all([api.get('/cash/status'), api.get('/cash/report', { params: { date: reportDate } })])
+      .then(([s, r]) => {
         setStatus(s.data);
-        setHistory(h.data);
         setReportRows(r.data.rows);
         setReportTotals(r.data.totals);
       })
       .catch((e) => setError(errMsg(e)))
       .finally(() => setLoading(false));
+    loadHistory(1);
+    setHPage(1);
   };
 
   const printReport = () => {
@@ -314,6 +326,7 @@ export default function Cash() {
             ))}
           </Table>
         )}
+        <Pagination page={hPage} total={hTotal} pageSize={20} onChange={(p) => { setHPage(p); loadHistory(p); }} />
       </Card>
 
       <Modal

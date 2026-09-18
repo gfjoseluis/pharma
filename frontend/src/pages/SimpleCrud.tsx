@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api, errMsg } from '../api/client';
-import { Card, Table, Button, Modal, Field, Input, Alert, Spinner } from '../components/ui';
+import { Card, Table, Button, Modal, Field, Input, Alert, Spinner, SearchBox, Pagination } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 
 interface Row { id: number; name: string; active: boolean; }
@@ -10,6 +10,9 @@ export default function SimpleCrudPage({ title, endpoint, showShort, managePerm 
   const { hasPerm } = useAuth();
   const canManage = !managePerm || hasPerm(managePerm);
   const [rows, setRows] = useState<Row[]>([]);
+  const [q, setQ] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [name, setName] = useState('');
@@ -19,10 +22,20 @@ export default function SimpleCrudPage({ title, endpoint, showShort, managePerm 
 
   const load = () => {
     setLoading(true);
-    api.get(endpoint).then((r) => setRows(r.data)).catch((e) => setError(errMsg(e))).finally(() => setLoading(false));
+    api.get(endpoint, { params: { q, page, pageSize: 20 } })
+      .then((r) => {
+        setRows(r.data.data);
+        setTotal(r.data.total);
+      })
+      .catch((e) => setError(errMsg(e)))
+      .finally(() => setLoading(false));
   };
 
-  useEffect(load, [endpoint]);
+  useEffect(() => {
+    setPage(1);
+  }, [q, endpoint]);
+
+  useEffect(load, [endpoint, q, page]);
 
   const save = async () => {
     setError('');
@@ -44,9 +57,12 @@ export default function SimpleCrudPage({ title, endpoint, showShort, managePerm 
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <h2>{title}</h2>
-        {canManage && <Button onClick={() => { setEditing(null); setName(''); setShortName(''); setError(''); setModal(true); }}>+ Nuevo</Button>}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <SearchBox value={q} onChange={setQ} placeholder="Buscar..." />
+          {canManage && <Button onClick={() => { setEditing(null); setName(''); setShortName(''); setError(''); setModal(true); }}>+ Nuevo</Button>}
+        </div>
       </div>
       <Alert type="error">{error}</Alert>
       {!canManage && <div className="alert alert-info">Vista de solo lectura: necesita permiso de gestion para crear o modificar registros.</div>}
@@ -67,6 +83,7 @@ export default function SimpleCrudPage({ title, endpoint, showShort, managePerm 
           ))}
         </Table>
         {!rows.length && <div className="empty">Sin registros</div>}
+        <Pagination page={page} total={total} pageSize={20} onChange={setPage} />
       </Card>
 
       <Modal title={editing ? `Editar: ${editing.name}` : `Nuevo ${title.toLowerCase().replace(/s$/, '')}`} open={modal} onClose={() => setModal(false)} footer={<>

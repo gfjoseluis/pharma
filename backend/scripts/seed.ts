@@ -5,6 +5,9 @@ import { ALL_ACTIONS } from '../src/config/actions';
 const ALL_PERMISSIONS = ALL_ACTIONS;
 
 async function main(): Promise<void> {
+  // --prod: semilla de produccion (sin productos/clientes/stock de prueba).
+  const isProd = process.argv.includes('--prod');
+  if (isProd) console.log('[INFO] Modo produccion: solo sucursal, usuarios, catalogos base y licencias.');
   const adminPass = await bcrypt.hash('admin123', 10);
   const cashierPass = await bcrypt.hash('cajero123', 10);
 
@@ -118,7 +121,7 @@ async function main(): Promise<void> {
     restrictions?: Array<{ restrictionType: string; notes: string }>;
   }
 
-  const productsData: SeedProduct[] = [
+  const productsData: SeedProduct[] = isProd ? [] : [
     {
       sku: 'PAR-INT-500-0001', name: 'Paracetamol 500mg', formId: fComprimido.id,
       ingredients: [{ ingredient: 'Paracetamol', concentration: '500 mg' }],
@@ -254,7 +257,8 @@ async function main(): Promise<void> {
     console.log(`       ${p.name} -> ${p.ingredients.map((i) => i.ingredient).join(' + ')} -> ${formName} -> ${labName}${p.restrictedUse ? ' [USO RESTRINGIDO]' : ''}`);
   }
 
-  // Clientes de prueba (para ventas con NIT/CI en el POS)
+  // Clientes de prueba (solo en desarrollo; en produccion el usuario los registra)
+  if (!isProd) {
   await prisma.client.upsert({
     where: { ciNit: '1234567' },
     create: { name: 'Juan Perez', ciNit: '1234567', phone: '70011122' },
@@ -266,6 +270,7 @@ async function main(): Promise<void> {
     update: {},
   });
   console.log('[OK] Clientes de prueba (Juan Perez, Farmacia Vecina SRL)');
+  }
 
   // Licencias por defecto (activadas con codigos demo para uso inmediato)
   const demoLicenses: Record<string, string> = {

@@ -28,11 +28,11 @@ export default function PurchasesNew() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api.get('/branches').then((r) => {
-      setBranches(r.data);
-      setForm((f) => ({ ...f, branchId: f.branchId || (r.data[0] ? String(r.data[0].id) : '') }));
+    api.get('/branches', { params: { pageSize: 100 } }).then((r) => {
+      setBranches(r.data.data);
+      setForm((f) => ({ ...f, branchId: f.branchId || (r.data.data[0] ? String(r.data.data[0].id) : '') }));
     }).catch(() => {});
-    api.get('/inventory/suppliers').then((r) => setSuppliers(r.data)).catch(() => {});
+    api.get('/inventory/suppliers', { params: { pageSize: 100 } }).then((r) => setSuppliers(r.data.data)).catch(() => {});
   }, []);
 
   const setItemProduct = (idx: number, p: PickedProduct | null) => {

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api, errMsg } from '../api/client';
-import { Card, Table, Button, Modal, Field, Input, SearchBox, fmtDate, Spinner, Alert, Badge } from '../components/ui';
+import { Card, Table, Button, Modal, Field, Input, SearchBox, fmtDate, Spinner, Alert, Badge, Pagination } from '../components/ui';
 
 interface Client {
   id: number;
@@ -19,6 +19,8 @@ export default function Clients() {
   const { hasPerm } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [q, setQ] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -28,10 +30,17 @@ export default function Clients() {
   const load = useCallback(() => {
     setLoading(true);
     api
-      .get(`/clients?q=${encodeURIComponent(q)}`)
-      .then((r) => setClients(r.data))
+      .get(`/clients?q=${encodeURIComponent(q)}&page=${page}&pageSize=20`)
+      .then((r) => {
+        setClients(r.data.data);
+        setTotal(r.data.total);
+      })
       .catch((e) => setError(errMsg(e)))
       .finally(() => setLoading(false));
+  }, [q, page]);
+
+  useEffect(() => {
+    setPage(1);
   }, [q]);
 
   useEffect(() => {
@@ -108,6 +117,7 @@ export default function Clients() {
           ))}
         </Table>
         {!clients.length && <div className="empty">Sin clientes. Registre uno con NIT/CI unico.</div>}
+        <Pagination page={page} total={total} pageSize={20} onChange={setPage} />
       </Card>
 
       <Modal title={editing ? 'Editar cliente' : 'Nuevo cliente'} open={modal} onClose={() => setModal(false)} footer={<>

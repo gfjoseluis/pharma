@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/prisma';
+import { getPagination, paged } from '../../utils/pagination';
 import { logAction } from '../../utils/logger';
 
 const SALE_PRODUCT_SELECT = {
@@ -169,20 +170,34 @@ export async function list(req: Request, res: Response, next: NextFunction): Pro
   try {
     const from = req.query.from ? new Date(String(req.query.from)) : undefined;
     const to = req.query.to ? new Date(String(req.query.to)) : undefined;
-    const sales = await prisma.sale.findMany({
-      where: {
-        ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
-      },
-      include: {
-        client: { select: { id: true, name: true, ciNit: true } },
-        user: { select: { fullName: true } },
-        branch: { select: { name: true } },
-        items: { include: { product: { select: SALE_PRODUCT_SELECT } } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 300,
+    const where = {
+      ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+    };
+    const { page, pageSize, skip } = getPagination(req);
+    const [sales, total, agg] = await Promise.all([
+      prisma.sale.findMany({
+        where,
+        include: {
+          client: { select: { id: true, name: true, ciNit: true } },
+          user: { select: { fullName: true } },
+          branch: { select: { name: true } },
+          items: { include: { product: { select: SALE_PRODUCT_SELECT } } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+      prisma.sale.count({ where }),
+      prisma.sale.aggregate({
+        where: { ...where, status: 'ACTIVE' },
+        _count: true,
+        _sum: { total: true },
+      }),
+    ]);
+    res.json({
+      ...paged(sales, total, page, pageSize),
+      totals: { count: agg._count, total: Number(agg._sum.total || 0) },
     });
-    res.json(sales);
   } catch (err) { next(err); }
 }
 

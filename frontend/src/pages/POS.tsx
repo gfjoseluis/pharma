@@ -50,6 +50,12 @@ interface SaleResult {
     paymentStatus: string;
     paymentMethod: string;
     type: string;
+    createdAt: string;
+    items: Array<{
+      quantity: number;
+      price: number;
+      product: { name: string; sku: string };
+    }>;
   };
   paymentPending: boolean;
 }
@@ -74,6 +80,7 @@ export default function POS() {
   const [payMethod, setPayMethod] = useState<'EFECTIVO' | 'TARJETA' | 'QR'>('EFECTIVO');
   const [received, setReceived] = useState('');
   const [saleResult, setSaleResult] = useState<SaleResult | null>(null);
+  const [lastClientName, setLastClientName] = useState('MOSTRADOR');
   const [lastChange, setLastChange] = useState(0);
   const [lastReceived, setLastReceived] = useState(0);
   const [error, setError] = useState('');
@@ -90,7 +97,7 @@ export default function POS() {
   };
 
   useEffect(() => {
-    api.get('/clients?q=').then((r) => setClients(r.data)).catch(() => {});
+    api.get('/clients', { params: { pageSize: 100 } }).then((r) => setClients(r.data.data)).catch(() => {});
     loadCash();
     searchRef.current?.focus();
   }, []);
@@ -225,6 +232,8 @@ export default function POS() {
       if (clientId) body.clientId = clientId;
       const r = await api.post('/sales', body);
       const result: SaleResult = r.data;
+      const clientObj = clientId ? clients.find((c) => c.id === clientId) : selectedClient;
+      setLastClientName(clientObj ? `${clientObj.name} (${clientObj.ciNit})` : 'MOSTRADOR');
       setCart([]);
       setSelectedClient(null);
       setClientQ('');
@@ -238,6 +247,14 @@ export default function POS() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const printTicket = () => {
+    document.body.classList.add('print-ticket');
+    const done = () => document.body.classList.remove('print-ticket');
+    window.addEventListener('afterprint', done, { once: true });
+    setTimeout(done, 2000);
+    window.print();
   };
 
   const filteredClients = clientQ.trim()
@@ -460,7 +477,10 @@ export default function POS() {
         title="Venta registrada"
         open={!!saleResult}
         onClose={() => setSaleResult(null)}
-        footer={<Button variant="primary" onClick={() => setSaleResult(null)}>Nueva venta</Button>}
+        footer={<>
+          <Button variant="secondary" onClick={printTicket}>Imprimir comprobante</Button>
+          <Button variant="primary" onClick={() => setSaleResult(null)}>Nueva venta</Button>
+        </>}
       >
         {saleResult && (
           <div style={{ textAlign: 'center', padding: 8 }}>
@@ -477,6 +497,45 @@ export default function POS() {
           </div>
         )}
       </Modal>
+
+      {/* Comprobante tipo voucher: solo visible al imprimir */}
+      {saleResult && (
+        <div className="ticket print-only" aria-hidden="true">
+          <div className="ticket-head">
+            <div className="ticket-brand">FarmaciaPOS</div>
+            <div>{user?.branch?.name || 'Sucursal'}</div>
+          </div>
+          <div className="ticket-meta">
+            <div>Comprobante Nº {saleResult.sale.number}</div>
+            <div>{new Date(saleResult.sale.createdAt).toLocaleString('es-BO')}</div>
+            <div>Cajero: {user?.fullName || '-'}</div>
+            <div>Cliente: {lastClientName}</div>
+          </div>
+          <table className="ticket-items">
+            <thead><tr><th>Cant.</th><th>Detalle</th><th>Subtotal</th></tr></thead>
+            <tbody>
+              {saleResult.sale.items.map((it, i) => (
+                <tr key={i}>
+                  <td>{it.quantity}</td>
+                  <td>{it.product.name}<br />{fmtMoney(it.price)} c/u</td>
+                  <td>{fmtMoney(Number(it.quantity) * Number(it.price))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="ticket-total"><span>TOTAL</span><span>{fmtMoney(saleResult.sale.total)}</span></div>
+          <div className="ticket-meta">
+            <div>Pago: {METHOD_LABEL[saleResult.sale.paymentMethod] || saleResult.sale.paymentMethod}</div>
+            {saleResult.sale.paymentMethod === 'EFECTIVO' && (
+              <>
+                <div>Recibido: {fmtMoney(lastReceived)}</div>
+                <div>Cambio: {fmtMoney(lastChange)}</div>
+              </>
+            )}
+          </div>
+          <div className="ticket-foot">Gracias por su compra<br />Conserve este comprobante</div>
+        </div>
+      )}
     </div>
   );
 }

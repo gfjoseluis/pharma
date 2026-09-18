@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/prisma';
+import { getPagination, paged } from '../../utils/pagination';
 import { logAction } from '../../utils/logger';
 
 const PURCHASE_INCLUDE = {
@@ -28,15 +29,21 @@ export async function list(req: Request, res: Response, next: NextFunction): Pro
   try {
     const from = req.query.from ? new Date(String(req.query.from)) : undefined;
     const to = req.query.to ? new Date(String(req.query.to)) : undefined;
-    const purchases = await prisma.purchase.findMany({
-      where: {
-        ...(from || to ? { date: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
-      },
-      include: PURCHASE_INCLUDE,
-      orderBy: { date: 'desc' },
-      take: 200,
-    });
-    res.json(purchases);
+    const where = {
+      ...(from || to ? { date: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+    };
+    const { page, pageSize, skip } = getPagination(req);
+    const [purchases, total] = await Promise.all([
+      prisma.purchase.findMany({
+        where,
+        include: PURCHASE_INCLUDE,
+        orderBy: { date: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+      prisma.purchase.count({ where }),
+    ]);
+    res.json(paged(purchases, total, page, pageSize));
   } catch (err) { next(err); }
 }
 

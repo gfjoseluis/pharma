@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/prisma';
+import { getPagination, paged } from '../../utils/pagination';
 import { logAction } from '../../utils/logger';
 
 /** Caja abierta del usuario (o null). Solo una a la vez por cajero. */
@@ -224,18 +225,24 @@ export async function history(req: Request, res: Response, next: NextFunction): 
     const from = req.query.from ? new Date(String(req.query.from)) : undefined;
     const to = req.query.to ? new Date(String(req.query.to)) : undefined;
     const qUserId = req.query.userId ? parseInt(String(req.query.userId), 10) : undefined;
-    const sessions = await prisma.cashSession.findMany({
-      where: {
-        ...(user.role === 'admin' && qUserId ? { userId: qUserId } : user.role === 'admin' ? {} : { userId: user.id }),
-        ...(from || to ? { openedAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
-      },
-      include: {
-        branch: { select: { id: true, name: true } },
-        user: { select: { id: true, fullName: true } },
-      },
-      orderBy: { openedAt: 'desc' },
-      take: 100,
-    });
+    const where = {
+      ...(user.role === 'admin' && qUserId ? { userId: qUserId } : user.role === 'admin' ? {} : { userId: user.id }),
+      ...(from || to ? { openedAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+    };
+    const { page, pageSize, skip } = getPagination(req);
+    const [sessions, total] = await Promise.all([
+      prisma.cashSession.findMany({
+        where,
+        include: {
+          branch: { select: { id: true, name: true } },
+          user: { select: { id: true, fullName: true } },
+        },
+        orderBy: { openedAt: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+      prisma.cashSession.count({ where }),
+    ]);
     const rows = await Promise.all(
       sessions.map(async (s) => {
         const totals = s.status === 'OPEN'
@@ -251,6 +258,6 @@ export async function history(req: Request, res: Response, next: NextFunction): 
         };
       })
     );
-    res.json(rows);
+    res.json(paged(rows, total, page, pageSize));
   } catch (err) { next(err); }
 }

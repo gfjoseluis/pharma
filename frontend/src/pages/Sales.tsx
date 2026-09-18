@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api, errMsg } from '../api/client';
-import { Card, Table, Button, Badge, fmtMoney, fmtDate, Spinner, Alert, Modal, Field, Input } from '../components/ui';
+import { Card, Table, Button, Badge, fmtMoney, fmtDate, Spinner, Alert, Modal, Field, Input, Pagination } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 
 interface SaleRow {
@@ -44,6 +44,9 @@ function periodFrom(p: Period): Date {
 export default function Sales() {
   const { hasPerm } = useAuth();
   const [sales, setSales] = useState<SaleRow[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [periodTotals, setPeriodTotals] = useState({ count: 0, total: 0 });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>('day');
@@ -51,22 +54,26 @@ export default function Sales() {
   const [annulReason, setAnnulReason] = useState('');
   const [detail, setDetail] = useState<SaleRow | null>(null);
 
-  const load = (p: Period = period) => {
+  const load = (p: Period = period, pg: number = page) => {
     setPeriod(p);
     setLoading(true);
     const from = periodFrom(p);
     const to = new Date(Date.now() + 86400000);
     api
-      .get('/sales', { params: { from: from.toISOString(), to: to.toISOString() } })
-      .then((r) => setSales(r.data))
+      .get('/sales', { params: { from: from.toISOString(), to: to.toISOString(), page: pg, pageSize: 20 } })
+      .then((r) => {
+        setSales(r.data.data);
+        setTotal(r.data.total);
+        setPeriodTotals(r.data.totals || { count: 0, total: 0 });
+      })
       .catch((e) => setError(errMsg(e)))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load('day'); }, []);
+  useEffect(() => { load('day', 1); setPage(1); }, []);
 
-  const activeSales = sales.filter((s) => s.status === 'ACTIVE');
-  const periodTotal = activeSales.reduce((a, s) => a + Number(s.total), 0);
+  const periodTotal = periodTotals.total;
+  const periodCount = periodTotals.count;
 
   const doAnnul = async () => {
     if (!annulSale) return;
@@ -95,7 +102,7 @@ export default function Sales() {
 
       <div className="tabs">
         {([['day', 'Hoy'], ['week', '7 dias'], ['month', 'Este mes']] as [Period, string][]).map(([p, label]) => (
-          <button key={p} className={`tab ${period === p ? 'active' : ''}`} onClick={() => load(p)}>{label}</button>
+          <button key={p} className={`tab ${period === p ? 'active' : ''}`} onClick={() => { setPage(1); load(p, 1); }}>{label}</button>
         ))}
       </div>
 
@@ -106,11 +113,11 @@ export default function Sales() {
         </div>
         <div className="kpi">
           <div className="k-label">Ventas activas</div>
-          <div className="k-value">{activeSales.length}</div>
+          <div className="k-value">{periodCount}</div>
         </div>
         <div className="kpi">
           <div className="k-label">Ticket promedio</div>
-          <div className="k-value">{activeSales.length ? fmtMoney(periodTotal / activeSales.length) : fmtMoney(0)}</div>
+          <div className="k-value">{periodCount ? fmtMoney(periodTotal / periodCount) : fmtMoney(0)}</div>
         </div>
       </div>
 
@@ -147,6 +154,7 @@ export default function Sales() {
           ))}
         </Table>
         {!sales.length && <div className="empty">Sin ventas registradas</div>}
+        <Pagination page={page} total={total} pageSize={20} onChange={(p) => { setPage(p); load(period, p); }} />
       </Card>
 
       <Modal title={`Anular venta ${annulSale?.number || ''}`} open={!!annulSale} onClose={() => setAnnulSale(null)} footer={<>

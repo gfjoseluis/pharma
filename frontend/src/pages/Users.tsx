@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api, errMsg } from '../api/client';
-import { Card, Table, Button, Modal, Field, Input, Select, Spinner, Alert, Badge } from '../components/ui';
+import SelectSearch from '../components/SelectSearch';
+import { Card, Table, Button, Modal, Field, Input, Spinner, Alert, Badge, Pagination } from '../components/ui';
 import { ACTION_GROUPS, ACTION_LABELS, ALL_ACTIONS } from '../perms';
 
 interface Branch { id: number; name: string; }
@@ -21,6 +22,8 @@ const ROLE_LABEL: Record<string, string> = { admin: 'Admin', cajero: 'Cajero', t
 
 export default function Users() {
   const [rows, setRows] = useState<UserRow[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<UserRow | null>(null);
@@ -28,14 +31,20 @@ export default function Users() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const load = () => {
+  const load = (pg: number = page) => {
     setLoading(true);
-    api.get('/users').then((r) => setRows(r.data)).catch((e) => setError(errMsg(e))).finally(() => setLoading(false));
+    api.get('/users', { params: { page: pg, pageSize: 20 } })
+      .then((r) => {
+        setRows(r.data.data);
+        setTotal(r.data.total);
+      })
+      .catch((e) => setError(errMsg(e)))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    load();
-    api.get('/branches').then((r) => setBranches(r.data)).catch(() => {});
+    load(1);
+    api.get('/branches', { params: { pageSize: 100 } }).then((r) => setBranches(r.data.data)).catch(() => {});
   }, []);
 
   const openNew = () => {
@@ -109,6 +118,7 @@ export default function Users() {
             </tr>
           ))}
         </Table>
+        <Pagination page={page} total={total} pageSize={20} onChange={(p) => { setPage(p); load(p); }} />
       </Card>
 
       <Modal title={editing ? `Editar usuario: ${editing.fullName}` : 'Nuevo usuario'} open={modal} onClose={() => setModal(false)} footer={<>
@@ -124,17 +134,26 @@ export default function Users() {
         <div className="form-row">
           <Field label="Nombre completo"><Input value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} /></Field>
           <Field label="Rol">
-            <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              <option value="admin">Admin</option>
-              <option value="cajero">Cajero</option>
-              <option value="tecnico">Tecnico</option>
-            </Select>
+            <SelectSearch
+              value={form.role}
+              onChange={(v) => setForm({ ...form, role: v })}
+              options={[
+                { value: 'admin', label: 'Admin' },
+                { value: 'cajero', label: 'Cajero' },
+                { value: 'tecnico', label: 'Tecnico' },
+              ]}
+            />
           </Field>
           <Field label="Sucursal asignada">
-            <Select value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}>
-              <option value="">Sin sucursal</option>
-              {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </Select>
+            <SelectSearch
+              value={form.branchId}
+              onChange={(v) => setForm({ ...form, branchId: v })}
+              options={[
+                { value: '', label: 'Sin sucursal' },
+                ...branches.map((b) => ({ value: String(b.id), label: b.name })),
+              ]}
+              placeholder="Sin sucursal"
+            />
           </Field>
         </div>
         {form.role !== 'admin' && (

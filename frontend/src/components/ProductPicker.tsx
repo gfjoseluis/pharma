@@ -24,6 +24,7 @@ interface Props {
   showStock?: boolean;
   branchId?: number | null;
   disabled?: boolean;
+  minLength?: number;
 }
 
 /**
@@ -31,7 +32,7 @@ interface Props {
  * forma, presentacion, SKU o codigo de barras.
  * Muestra "nombre - forma - principios activos - laboratorio".
  */
-export default function ProductPicker({ value, onSelect, placeholder, showStock, branchId, disabled }: Props) {
+export default function ProductPicker({ value, onSelect, placeholder, showStock, branchId, disabled, minLength = 3 }: Props) {
   const [q, setQ] = useState('');
   const [results, setResults] = useState<PickedProduct[]>([]);
   const [open, setOpen] = useState(false);
@@ -55,6 +56,11 @@ export default function ProductPicker({ value, onSelect, placeholder, showStock,
     setQ(text);
     setOpen(true);
     clearTimeout(timerRef.current);
+    if (text.trim().length < minLength) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
     timerRef.current = setTimeout(() => {
       setSearching(true);
       api
@@ -98,8 +104,9 @@ export default function ProductPicker({ value, onSelect, placeholder, showStock,
       )}
       {open && !value && (
         <div className="picker-dropdown">
-          {searching && <div className="p-meta" style={{ padding: 8 }}>Buscando...</div>}
-          {!searching && results.length === 0 && <div className="p-meta" style={{ padding: 8 }}>Sin resultados</div>}
+          {q.trim().length < minLength && <div className="p-meta" style={{ padding: 8 }}>Escriba al menos {minLength} letras para buscar</div>}
+          {q.trim().length >= minLength && searching && <div className="p-meta" style={{ padding: 8 }}>Buscando...</div>}
+          {q.trim().length >= minLength && !searching && results.length === 0 && <div className="p-meta" style={{ padding: 8 }}>Sin resultados</div>}
           {results.map((p) => (
             <button
               key={p.id}

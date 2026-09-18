@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, errMsg } from '../api/client';
-import { Card, Table, Button, Modal, Field, Input, SearchBox, Spinner, Alert } from '../components/ui';
+import { Card, Table, Button, Modal, Field, Input, SearchBox, Spinner, Alert, Pagination } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 
 interface ProductBrief { id: number; name: string; sku: string; }
@@ -22,7 +22,8 @@ export default function Suppliers() {
   const { hasPerm } = useAuth();
   const canManage = hasPerm('inventory.refs.manage');
   const [rows, setRows] = useState<Supplier[]>([]);
-  const [products, setProducts] = useState<ProductBrief[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [q, setQ] = useState('');
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
@@ -30,28 +31,61 @@ export default function Suppliers() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const [prodQ, setProdQ] = useState('');
+  const [prodHits, setProdHits] = useState<ProductBrief[]>([]);
+  const [prodMap, setProdMap] = useState<Record<number, ProductBrief>>({});
+
   const load = useCallback(() => {
     setLoading(true);
     api
-      .get('/inventory/suppliers')
-      .then((r) => setRows(r.data.filter((s: Supplier) => s.name.toLowerCase().includes(q.toLowerCase()))))
+      .get('/inventory/suppliers', { params: { q, page, pageSize: 20 } })
+      .then((r) => {
+        setRows(r.data.data);
+        setTotal(r.data.total);
+      })
       .catch((e) => setError(errMsg(e)))
       .finally(() => setLoading(false));
+  }, [q, page]);
+
+  useEffect(() => {
+    setPage(1);
   }, [q]);
 
   useEffect(() => {
-    api.get('/inventory/products?limit=500').then((r) => setProducts(r.data.map((p: { id: number; name: string; sku: string }) => ({ id: p.id, name: p.name, sku: p.sku })))).catch(() => {});
-    load();
+    const t = setTimeout(load, 250);
+    return () => clearTimeout(t);
   }, [load]);
 
-  const openNew = () => { setEditing(null); setForm(emptyForm); setError(''); setModal(true); };
+  const searchProducts = (text: string) => {
+    setProdQ(text);
+    if (text.trim().length < 2) { setProdHits([]); return; }
+    api
+      .get(`/inventory/products/search?q=${encodeURIComponent(text)}`)
+      .then((r) => {
+        const hits = r.data.map((p: { id: number; name: string; sku: string }) => ({ id: p.id, name: p.name, sku: p.sku }));
+        setProdHits(hits);
+        setProdMap((prev) => {
+          const next = { ...prev };
+          hits.forEach((h: ProductBrief) => { next[h.id] = h; });
+          return next;
+        });
+      })
+      .catch(() => setProdHits([]));
+  };
+
+  const openNew = () => { setEditing(null); setForm(emptyForm); setError(''); setProdQ(''); setProdHits([]); setModal(true); };
   const openEdit = (s: Supplier) => {
     setEditing(s);
     setForm({
       name: s.name, ruc: s.ruc || '', phone: s.phone || '', email: s.email || '', address: s.address || '',
       productIds: s.products.map((p) => p.product.id),
     });
+    const m: Record<number, ProductBrief> = {};
+    s.products.forEach((p) => { m[p.product.id] = p.product; });
+    setProdMap((prev) => ({ ...prev, ...m }));
     setError('');
+    setProdQ('');
+    setProdHits([]);
     setModal(true);
   };
 
@@ -101,6 +135,7 @@ export default function Suppliers() {
           ))}
         </Table>
         {!rows.length && <div className="empty">Sin proveedores</div>}
+        <Pagination page={page} total={total} pageSize={20} onChange={setPage} />
       </Card>
 
       <Modal title={editing ? `Editar: ${editing.name}` : 'Nuevo proveedor'} open={modal} onClose={() => setModal(false)} footer={<>
@@ -117,14 +152,27 @@ export default function Suppliers() {
         </div>
         <Field label="Direccion"><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Field>
         <Field label={`Productos que vende este proveedor (${form.productIds.length} seleccionados)`}>
-          <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8 }}>
-            {products.map((p) => (
-              <label className="checkbox-row" key={p.id}>
-                <input type="checkbox" checked={form.productIds.includes(p.id)} onChange={() => toggleProduct(p.id)} />
-                {p.name} <span className="badge badge-blue">{p.sku}</span>
-              </label>
-            ))}
-          </div>
+          <Input value={prodQ} onChange={(e) => searchProducts(e.target.value)} placeholder="Buscar producto por nombre o SKU (mín. 2 letras)..." />
+          {prodHits.length > 0 && (
+            <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 8, marginTop: 8 }}>
+              {prodHits.filter((p) => !form.productIds.includes(p.id)).map((p) => (
+                <div key={p.id} className="checkbox-row" style={{ justifyContent: 'space-between' }}>
+                  <span>{p.name} <span className="badge badge-blue">{p.sku}</span></span>
+                  <Button variant="secondary" className="btn-sm" onClick={() => toggleProduct(p.id)}>Agregar</Button>
+                </div>
+              ))}
+            </div>
+          )}
+          {form.productIds.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+              {form.productIds.map((id) => (
+                <span key={id} className="badge badge-green" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                  {prodMap[id]?.name || `Producto #${id}`}
+                  <button type="button" onClick={() => toggleProduct(id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }} title="Quitar">×</button>
+                </span>
+              ))}
+            </div>
+          )}
         </Field>
       </Modal>
     </div>

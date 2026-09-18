@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/prisma';
 import { simpleCrud } from './crud';
 import { normalizeSku, isValidSkuFormat, generateSku, validateSku, buildSkuBase } from '../../utils/sku';
+import { getPagination, paged } from '../../utils/pagination';
 import { logAction } from '../../utils/logger';
 
 // ==================== CRUDs simples ====================
@@ -26,13 +27,22 @@ export const updateForm = simpleCrud('form').update;
 export const deactivateForm = simpleCrud('form').deactivate;
 
 // ==================== Proveedores ====================
-export async function listSuppliers(_req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function listSuppliers(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const suppliers = await prisma.supplier.findMany({
-      orderBy: { name: 'asc' },
-      include: { products: { include: { product: { select: { id: true, name: true, sku: true } } } } },
-    });
-    res.json(suppliers);
+    const q = String(req.query.q || '').trim();
+    const where = q ? { name: { contains: q } } : undefined;
+    const { page, pageSize, skip } = getPagination(req);
+    const [suppliers, total] = await Promise.all([
+      prisma.supplier.findMany({
+        where,
+        orderBy: { name: 'asc' },
+        include: { products: { include: { product: { select: { id: true, name: true, sku: true } } } } },
+        skip,
+        take: pageSize,
+      }),
+      prisma.supplier.count({ where }),
+    ]);
+    res.json(paged(suppliers, total, page, pageSize));
   } catch (err) { next(err); }
 }
 
@@ -125,25 +135,31 @@ export async function listProducts(req: Request, res: Response, next: NextFuncti
   try {
     const q = String(req.query.q || '').trim();
     const onlyActive = req.query.active !== 'false';
-    const products = await prisma.product.findMany({
-      where: {
-        ...(q
-          ? {
-              OR: [
-                { name: { contains: q } },
-                { sku: { contains: q } },
-                { barcode: { contains: q } },
-                { ingredients: { some: { ingredient: { contains: q } } } },
-              ],
-            }
-          : {}),
-        ...(onlyActive ? { active: true } : {}),
-      },
-      include: PRODUCT_INCLUDE,
-      orderBy: { name: 'asc' },
-      take: 200,
-    });
-    res.json(products);
+    const where = {
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q } },
+              { sku: { contains: q } },
+              { barcode: { contains: q } },
+              { ingredients: { some: { ingredient: { contains: q } } } },
+            ],
+          }
+        : {}),
+      ...(onlyActive ? { active: true } : {}),
+    };
+    const { page, pageSize, skip } = getPagination(req);
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        include: PRODUCT_INCLUDE,
+        orderBy: { name: 'asc' },
+        skip,
+        take: pageSize,
+      }),
+      prisma.product.count({ where }),
+    ]);
+    res.json(paged(products, total, page, pageSize));
   } catch (err) { next(err); }
 }
 
@@ -203,6 +219,7 @@ export async function searchProducts(req: Request, res: Response, next: NextFunc
         ingredients: p.ingredients.map((i) => ({ ingredient: i.ingredient, concentration: i.concentration })),
         form: p.form ? { id: p.form.id, name: p.form.name } : null,
         concentration: p.concentration,
+        therapeuticAction: p.therapeuticAction,
         restrictedUse: p.restrictedUse,
         barcode: p.barcode,
         price: p.price,
@@ -291,7 +308,7 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
   try {
     const {
       sku, autoSku, name, barcode, categoryId, laboratoryId, unitMeasureId,
-      formId, concentration, restrictedUse, price, costPrice, minStock, supplierIds,
+      formId, concentration, therapeuticAction, restrictedUse, price, costPrice, minStock, supplierIds,
       ingredients, restrictions,
     } = req.body || {};
     if (!name) { res.status(400).json({ error: 'name es obligatorio' }); return; }
@@ -347,6 +364,7 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
         unitMeasureId: unitMeasureId || null,
         formId: formId || null,
         concentration: firstConcentration(parsedIngredients, concentration),
+        therapeuticAction: therapeuticAction !== undefined ? String(therapeuticAction).trim().slice(0, 190) || null : null,
         restrictedUse: Boolean(restrictedUse),
         price: priceNum,
         costPrice: costNum,
@@ -372,7 +390,7 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
     const id = parseInt(req.params.id, 10);
     const {
       sku, name, barcode, categoryId, laboratoryId, unitMeasureId,
-      formId, concentration, restrictedUse, price, costPrice, minStock, active, supplierIds,
+      formId, concentration, therapeuticAction, restrictedUse, price, costPrice, minStock, active, supplierIds,
       ingredients, restrictions,
     } = req.body || {};
     const existing = await prisma.product.findUnique({ where: { id } });
@@ -414,6 +432,7 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
           unitMeasureId: unitMeasureId !== undefined ? unitMeasureId || null : undefined,
           formId: formId !== undefined ? formId || null : undefined,
           concentration: concentration !== undefined ? String(concentration).trim() || null : undefined,
+          therapeuticAction: therapeuticAction !== undefined ? String(therapeuticAction).trim().slice(0, 190) || null : undefined,
           restrictedUse: restrictedUse !== undefined ? Boolean(restrictedUse) : undefined,
           price: priceNum,
           costPrice: costNum,
@@ -540,7 +559,9 @@ export async function lowStockProducts(req: Request, res: Response, next: NextFu
       map.set(key, entry);
     }
     const low = Array.from(map.values())
-      .filter((e) => e.total <= e.minStock)
+      // Solo alertan productos con minimo configurado (el catalogo importado
+      // nace con min 0 hasta que la farmacia define sus minimos).
+      .filter((e) => e.minStock > 0 && e.total <= e.minStock)
       .sort((a, b) => a.total - b.total)
       .slice(0, 100);
     // Productos sin ninguna fila de stock tambien necesitan reposicion.
